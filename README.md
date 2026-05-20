@@ -45,14 +45,7 @@ Cada carpeta es un entregable independiente con su propio `README.md` y guion de
 
 En equipos sin GPU dedicada el sistema sigue funcionando, pero la latencia sube considerablemente (Ollama cae a CPU automaticamente).
 
-### 2. Clonar el repositorio
-
-```bash
-git clone https://github.com/<usuario>/<repo>.git
-cd <repo>
-```
-
-### 3. Setup del motor LLM (semana 01)
+### 2. Setup del motor LLM (semana 01)
 
 ```powershell
 # Descargar el modelo base
@@ -67,7 +60,7 @@ ollama list   # debe aparecer "tailo"
 ollama run tailo "Hola, busco croquetas para un cachorro labrador"
 ```
 
-### 4. Setup del pipeline RAG (semana 02)
+### 3. Setup del pipeline RAG (semana 02)
 
 ```powershell
 cd ..\entregable-semana-02
@@ -99,7 +92,7 @@ cd entregable-semana-02
 .\setup.ps1
 ```
 
-### 5. Comandos utiles
+### 4. Comandos utiles
 
 ```powershell
 # Benchmark de latencia (objetivo p95 < 100 ms)
