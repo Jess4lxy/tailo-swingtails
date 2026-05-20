@@ -1,0 +1,231 @@
+================================================================
+   GUION DE DEMO - Tailo RAG (Entregable Semana 02)
+   Desarrollo Web Integral - Cuatrimestre 9 - UTM
+================================================================
+
+ORDEN DE PRESENTACION
+   1. Arquitectura y corpus
+   2. Ingesta (chunking + embeddings + Chroma)
+   3. Recuperacion + latencia p95
+   4. Chat RAG en vivo (tutor y veterinario)
+   5. Contencion de alucinaciones
+   6. Metricas RAGAS
+
+----------------------------------------------------------------
+PASO 0 - Preparacion (antes de empezar)
+----------------------------------------------------------------
+
+- Cerrar Ollama de la bandeja y volver a abrirlo (ejecuta en limpio).
+- Tener dos ventanas de PowerShell:
+    Ventana 1 (izquierda): demo del pipeline.
+    Ventana 2 (derecha): nvidia-smi / ollama ps.
+- cd a:
+    C:\workCodes\utmCodes\programasCuatri9\desarrolloWeb\entregable-semana-02
+- Activar venv:
+    .\.venv\Scripts\Activate.ps1
+
+
+----------------------------------------------------------------
+PASO 1 - Mostrar la arquitectura (README.md)
+----------------------------------------------------------------
+
+> "Profe, esta semana montamos el RAG completo sobre el motor
+   de la semana pasada. Decidimos ChromaDB persistente con
+   nomic-embed-text como embedding, todo local."
+
+VENTANA 1:
+    notepad .\README.md
+
+Senalar:
+  - Diagrama de arquitectura.
+  - Tabla de decisiones (justificacion arquitectonica).
+
+
+----------------------------------------------------------------
+PASO 2 - Mostrar el corpus de 4 fuentes
+----------------------------------------------------------------
+
+> "La base de conocimiento son cuatro corpora: catalogo de
+   productos, fichas de clinicas, guias de cuidado y politicas
+   de la app."
+
+VENTANA 1:
+    Get-ChildItem .\corpus
+    notepad .\corpus\guias_cuidado.md
+
+Senalar:
+  - Bloques de senales de alarma (lo que Tailo debe poder citar).
+  - Calendario de vacunacion (info que un veterinario consultaria).
+
+
+----------------------------------------------------------------
+PASO 3 - Mostrar el Modelfile actualizado
+----------------------------------------------------------------
+
+> "El Modelfile evoluciono: ahora Tailo apoya tanto al usuario
+   como al veterinario, pero con reglas estrictas anti-alucinacion."
+
+VENTANA 1:
+    notepad .\Modelfile.tailo-rag
+
+Senalar:
+  - temperature bajada de 0.4 a 0.2 (mas deterministico con RAG).
+  - Regla 1: responder SOLO con base en el contexto recuperado.
+  - Reglas sobre sintomas: orientar SI, diagnosticar/recetar NO.
+  - Cierre que redirige a veterinario humano.
+
+
+----------------------------------------------------------------
+PASO 4 - Ejecutar la ingesta (chunking + embeddings + Chroma)
+----------------------------------------------------------------
+
+VENTANA 1:
+    python .\src\ingest.py
+
+Senalar mientras corre:
+  - "X chunks generados desde el corpus" (debe ser ~60-80).
+  - Barra de progreso embedding+insert.
+  - Al final imprime stats con dimension del vector (768),
+    ms por chunk y carpeta de persistencia.
+
+VENTANA 1:
+    Get-ChildItem .\chroma_db
+> "La base persiste en disco; si reinicio el equipo no se borra."
+
+
+----------------------------------------------------------------
+PASO 5 - Probar la recuperacion sola y medir p95
+----------------------------------------------------------------
+
+> "Vamos a ver que la recuperacion responde rapido y trae chunks
+   relevantes."
+
+VENTANA 1:
+    python .\src\retrieve.py "Mi gato lleva 36 horas sin comer"
+
+Senalar:
+  - Top-K trae fragmentos de guias_cuidado.md sobre lipidosis hepatica.
+  - Latencia ms_total muy por debajo de 100 ms.
+
+VENTANA 1:
+    python .\src\retrieve.py --bench
+
+Senalar:
+  - ms_total_p95 (rubrica pide < 100 ms).
+  - El embedding domina; la busqueda en Chroma es submilisegundo
+    (era de esperar con ~60 vectores).
+
+
+----------------------------------------------------------------
+PASO 6 - Chat RAG end-to-end (caso TUTOR)
+----------------------------------------------------------------
+
+VENTANA 1:
+    python .\src\chat.py
+
+Pregunta 1 (busqueda + receta):
+    Recomiendame croquetas para un gato senior con problemas renales
+
+Esperado:
+  - Cita Pro Plan Veterinary Diets Renal RF con presentacion y precio.
+  - Aclara que requiere receta veterinaria y no sustituye tratamiento.
+  - Cierra recomendando consulta con veterinario.
+
+Pregunta 2 (urgencia):
+    Mi perro tuvo una convulsion, que hago?
+
+Esperado:
+  - Lista de primeros auxilios literal del corpus.
+  - "Trasladar a urgencias veterinarias de inmediato".
+  - Sugerencia de Hospital VetCare 24h.
+
+
+----------------------------------------------------------------
+PASO 7 - Chat RAG end-to-end (caso VETERINARIO)
+----------------------------------------------------------------
+
+Pregunta 3 (referencia):
+    Que clinica de Merida atiende oncologia?
+
+Esperado:
+  - Cita literal "Especialidades Veterinarias del Sureste",
+    direccion y horario.
+  - Menciona "requiere referencia previa".
+
+
+----------------------------------------------------------------
+PASO 8 - Contencion de alucinaciones (caso fuera de corpus)
+----------------------------------------------------------------
+
+Pregunta 4 (no esta en la base):
+    Cual es la dosis exacta de meloxicam para un perro de 12 kg?
+
+Esperado:
+  - Tailo debe responder: "No tengo esa informacion en mi base
+    de conocimiento" y redirigir a veterinario.
+  - NO debe inventar mg/kg ni frecuencia.
+
+> "Esto demuestra el criterio de Faithfulness y el system prompt
+   restrictivo."
+
+Pregunta 5 (fuera de dominio):
+    Quien gano el mundial 2022?
+
+Esperado:
+  - Tailo redirige al proposito de SwingTails.
+
+
+----------------------------------------------------------------
+PASO 9 - Mostrar metricas RAGAS
+----------------------------------------------------------------
+
+> "La rubrica pide instrumentar metricas, no solo apreciaciones
+   visuales. Usamos RAGAS con juez local (Llama 3.1)."
+
+Salir del chat (escribir: salir)
+
+VENTANA 1:
+    python .\src\evaluate.py --sample 5
+
+> "Para la demo corro la muestra; la corrida completa esta en
+   evaluacion\ragas_results.json y la grabamos por separado por
+   tiempo."
+
+Senalar al final:
+  - faithfulness   (rubrica: respuestas fundamentadas en contexto)
+  - answer_relevancy (rubrica: sin divagaciones)
+  - context_precision (rubrica: top-k bien ranked)
+  - context_recall   (rubrica: recall > 90 %)
+
+
+----------------------------------------------------------------
+CIERRE
+----------------------------------------------------------------
+
+Mencionar como cierre:
+  - Arquitectura: ChromaDB persistente + nomic-embed-text + Tailo-RAG.
+  - Cumple rubrica:
+      * Base persistente (no volatil).
+      * Recuperacion p95 < 100 ms.
+      * Recall objetivo > 90 % (segun corrida RAGAS).
+      * System prompt restringe alucinaciones (demostrado en Paso 8).
+      * Trabajo en equipo: 3 roles (Arq de datos, Ingeniero LLM, QA/RAGAS).
+  - Siguiente paso: integrar este RAG con la UI de la app movil.
+
+
+================================================================
+COMANDOS DE EMERGENCIA
+================================================================
+
+# Reingestar desde cero
+python .\src\ingest.py
+
+# Borrar Chroma y volver a indexar
+Remove-Item -Recurse -Force .\chroma_db
+python .\src\ingest.py
+
+# Verificar que los modelos Ollama esten cargados
+ollama list
+
+# Reconstruir el modelo tailo-rag si se modifico el Modelfile
+ollama create tailo-rag -f .\Modelfile.tailo-rag

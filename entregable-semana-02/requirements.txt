@@ -1,0 +1,21 @@
+# Pipeline RAG - Tailo / SwingTails (Entregable Semana 02)
+# Probado con Python 3.11
+
+# Vector DB
+chromadb==0.5.5
+
+# Cliente Ollama (LLM + embeddings locales)
+ollama==0.3.3
+
+# Utilidades de chunking y parseo
+langchain-text-splitters==0.3.0
+
+# Evaluacion RAGAS (juez local via Ollama)
+ragas==0.2.6
+datasets==3.0.1
+langchain-community==0.3.3
+langchain-ollama==0.2.0
+
+# Auxiliares
+tqdm==4.66.5
+python-dotenv==1.0.1
