@@ -1,6 +1,6 @@
 # Entregable Semana 02 - Base de Datos Vectorial y RAG (Tailo / SwingTails)
 
-**Materia:** Desarrollo Web Integral - Cuatrimestre 9 - UTM
+**Materia:** Desarrollo Web Integral - Cuatrimestre 9
 **Equipo:** 2 - IDGS 9B
 **Prototipo:** Tailo (asistente IA de SwingTails) + RAG sobre ChromaDB
 
@@ -79,33 +79,7 @@ Ante cualquier decision terapeutica, Tailo recomienda redirigir a un medico vete
 
 El `SYSTEM` prompt completo esta en `Modelfile.tailo-rag`.
 
----
-
-## 4. Estructura del proyecto
-
-```
-entregable-semana-02/
-|- README.md                   <- este archivo
-|- requirements.txt
-|- setup.ps1                   <- crea modelo Ollama + venv + ingesta
-|- Modelfile.tailo-rag         <- modelo Ollama personalizado con system prompt
-|- corpus/                     <- 4 fuentes de conocimiento
-|- chroma_db/                  <- BD vectorial persistente (se genera)
-|- src/
-|  |- config.py
-|  |- ingest.py                <- chunking + embeddings + insercion
-|  |- retrieve.py              <- recuperacion y benchmark de latencia
-|  |- chat.py                  <- RAG end-to-end con streaming
-|  \- evaluate.py              <- metricas RAGAS
-|- evaluacion/
-|  |- eval_dataset.json        <- 20 preguntas con ground truth
-|  \- ragas_results.json       <- resultados (se genera)
-\- demo-profesor.txt           <- guion de la demo en vivo
-```
-
----
-
-## 5. Como reproducirlo (Windows / PowerShell)
+## 4. Como reproducirlo (Windows / PowerShell)
 
 ```powershell
 # 1. Crear modelo personalizado en Ollama (una sola vez)
@@ -140,7 +114,7 @@ python .\src\evaluate.py --sample 5
 
 ---
 
-## 6. Metricas objetivo (segun rubrica)
+## 5. Metricas objetivo
 
 | Metrica | Umbral rubrica | Donde se evidencia |
 | --- | --- | --- |
@@ -150,25 +124,9 @@ python .\src\evaluate.py --sample 5
 | Answer Relevancy | respuesta al punto | `evaluacion/ragas_results.json` campo `answer_relevancy` |
 | Context Precision | top-k bien rankeado | `evaluacion/ragas_results.json` campo `context_precision` |
 
-Los resultados concretos se documentan en el informe de equipo y en el video de demostracion.
-
 ---
 
-## 7. Entregables (checklist rubrica)
-
-- [x] Pipeline de ingesta con chunking justificado y overlap.
-- [x] Base vectorial persistente (ChromaDB en disco) con coseno + HNSW.
-- [x] Capa de embeddings local justificada (nomic-embed-text, 768 dim, multilingue).
-- [x] Recuperacion top-K con medicion de latencia p95.
-- [x] System prompt restrictivo que contiene alucinaciones.
-- [x] Metricas RAGAS automatizadas con juez local.
-- [x] Dataset de evaluacion con ground truth (20 preguntas, dos perfiles).
-- [ ] Video demostrativo del equipo publicado en redes sociales.
-- [ ] Informe en docx con portada y capturas.
-
----
-
-## 8. Continuidad respecto a la semana 01
+## 6. Continuidad respecto a la semana 01
 
 | Semana 01 | Semana 02 |
 | --- | --- |
