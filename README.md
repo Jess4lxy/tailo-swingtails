@@ -4,9 +4,8 @@ Prototipo academico de un asistente conversacional con IA local (sin nube) para 
 
 - **Materia:** Desarrollo Web Integral
 - **Carrera:** Desarrollo y Gestion de Software
-- **Universidad:** Universidad Tecnologica Metropolitana (UTM)
 - **Profesor:** Chuc Uc Joel Ivan
-- **Equipo (8-B):**
+- **Equipo (9-B):**
   - Buenfil Yunes Julian Nahim
   - Lopez Uicab Rossana Sofia
   - Martinez Rivero Allan Alexis
