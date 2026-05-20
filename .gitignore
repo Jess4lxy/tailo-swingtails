@@ -27,6 +27,7 @@ entregable-semana-02/evaluacion/ragas_results.json
 .env.local
 *.key
 *.pem
+.claude/
 
 # =============================================================================
 # IDE / SO
