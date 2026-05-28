@@ -42,15 +42,19 @@ from config import (
     OLLAMA_HOST,
     TOP_K,
 )
-from chat import build_prompt
+from chat import build_user_message
 from retrieve import Retriever
 
 
 def run_pipeline(retriever: Retriever, llm: ollama.Client, questions: list[dict], top_k: int) -> Dataset:
     rows = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
     for q in questions:
-        prompt, chunks, _ = build_prompt(q["pregunta"], retriever, top_k=top_k)
-        resp = llm.generate(model=LLM_MODEL, prompt=prompt, stream=False)["response"].strip()
+        user_msg, chunks, _ = build_user_message(q["pregunta"], retriever, top_k=top_k)
+        resp = llm.chat(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": user_msg}],
+            stream=False,
+        )["message"]["content"].strip()
 
         rows["question"].append(q["pregunta"])
         rows["answer"].append(resp)

@@ -109,11 +109,29 @@ NUNCA dar a perros ni gatos: chocolate, cafe, te, uvas, pasas, cebolla, ajo, agu
 
 ## 10. Primeros auxilios basicos
 
-- Heridas pequenas: limpiar con solucion salina o agua hervida fria, cubrir con gasa, evitar alcohol/yodo concentrado, acudir si hay sangrado activo o profunda.
-- Quemaduras: enfriar con agua fria 10 minutos, cubrir con gasa humeda, no aplicar pasta dental ni aceite.
-- Atragantamiento: revisar boca, si se ve el objeto y es accesible retirar con cuidado, no introducir dedos a ciegas.
-- Convulsion: no introducir nada en la boca, retirar objetos cercanos, anotar duracion, trasladar al veterinario apenas pase.
-- Golpe de calor (jadeo extremo, encias rojas, vomito en dia caluroso): mojar con agua a temperatura ambiente (NO helada) en cuello, ingles, axilas; trasladar de inmediato.
+### Convulsion en perros y gatos (que hacer en casa)
+Si tu mascota esta teniendo una convulsion:
+- NO introducir nada en la boca (no morderan su lengua, pero si pueden romperse dientes).
+- Retirar objetos cercanos que puedan lastimarla.
+- Anotar la duracion exacta de la convulsion.
+- Mantener la calma; no sujetar bruscamente al animal.
+- Una vez pase la convulsion, trasladar al veterinario lo antes posible, preferentemente a urgencias 24h. Convulsiones de cualquier duracion son senal de alarma.
+
+### Heridas pequenas
+Limpiar con solucion salina o agua hervida fria, cubrir con gasa, evitar alcohol/yodo concentrado. Acudir al veterinario si hay sangrado activo persistente o herida profunda.
+
+### Quemaduras
+Enfriar con agua fria durante 10 minutos. Cubrir con gasa humeda. NO aplicar pasta dental, aceite, mantequilla ni remedios caseros. Acudir a consulta.
+
+### Atragantamiento
+Revisar la boca con cuidado. Si se ve el objeto y es accesible, retirarlo con pinzas o los dedos. NO introducir dedos a ciegas. Si hay dificultad respiratoria persistente, urgencia inmediata.
+
+### Golpe de calor
+Senales: jadeo extremo, encias rojas, vomito en dia caluroso, debilidad.
+Acciones: mojar al animal con agua a temperatura ambiente (NO helada) en cuello, ingles y axilas. Trasladar de inmediato a urgencias veterinarias.
+
+### Intoxicacion sospechada
+Si la mascota ingirio chocolate, xylitol, uvas, cebolla, ajo, medicamento humano o planta toxica: acudir a urgencias 24h inmediatamente. Llevar el envase o muestra del toxico si es posible. NO inducir vomito sin indicacion veterinaria.
 
 ## 11. Cuando contactar al veterinario humano vs. orientacion via app
 
