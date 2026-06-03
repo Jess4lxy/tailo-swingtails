@@ -1,5 +1,5 @@
-# Setup rapido para el entregable de la semana 03 (Tailo Agent).
-# Asume que ya esta hecho el setup de la semana 02 (chroma_db generado).
+# Setup del entregable de la semana 03 (Tailo Agent). Autonomo: no depende de
+# la carpeta de la semana 02.
 
 $ErrorActionPreference = "Stop"
 
@@ -14,24 +14,34 @@ if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
 }
 
-if (-not (Test-Path ".venv")) {
+# En Windows "python" suele ser un stub de la Microsoft Store; preferimos el
+# lanzador "py" si existe.
+if (Get-Command py -ErrorAction SilentlyContinue) {
+    $PyVenv = { py -3 -m venv .venv }
+} elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    $PyVenv = { python -m venv .venv }
+} else {
+    throw "No encontre Python (ni 'py' ni 'python'). Instala Python 3.11+ y reintenta."
+}
+
+if (-not (Test-Path ".venv\Scripts\python.exe")) {
     Write-Host "==> Creando entorno virtual .venv" -ForegroundColor Cyan
-    python -m venv .venv
+    & $PyVenv
 }
 
 Write-Host "==> Instalando dependencias" -ForegroundColor Cyan
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip
 & .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
-$chroma = Join-Path (Resolve-Path "..").Path "entregable-semana-02\chroma_db"
-if (-not (Test-Path $chroma)) {
-    Write-Host "ADVERTENCIA: no encontre $chroma" -ForegroundColor Red
-    Write-Host "Corre 'python src\ingest.py' en entregable-semana-02 antes de usar Tailo." -ForegroundColor Red
+if (-not (Test-Path "chroma_db\chroma.sqlite3")) {
+    Write-Host "==> No hay base vectorial; generandola con ingest.py" -ForegroundColor Yellow
+    Write-Host "    (requiere Ollama corriendo con nomic-embed-text)" -ForegroundColor Yellow
+    & .\.venv\Scripts\python.exe src\ingest.py
 } else {
-    Write-Host "==> ChromaDB de la semana 02 detectado: $chroma" -ForegroundColor Green
+    Write-Host "==> ChromaDB local detectado (chroma_db\)" -ForegroundColor Green
 }
 
 Write-Host ""
 Write-Host "Listo. Edita .env con tus credenciales de SwingTails y luego:" -ForegroundColor Green
-Write-Host "    .\.venv\Scripts\activate" -ForegroundColor Green
-Write-Host "    python src\chat.py" -ForegroundColor Green
+Write-Host "    .\.venv\Scripts\python.exe src\chat.py                 # REPL (CLI)" -ForegroundColor Green
+Write-Host "    cd src; ..\.venv\Scripts\python.exe -m uvicorn server:app --port 8000   # servicio HTTP" -ForegroundColor Green

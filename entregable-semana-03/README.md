@@ -6,15 +6,16 @@ la API publica de SwingTails:
 - **Doc:** `https://swingtails-api-yz02.onrender.com/api-docs/`
 - **Base:** `https://swingtails-api-yz02.onrender.com`
 
-El conocimiento estatico (RAG con ChromaDB) se **reutiliza** de la semana 02:
-no es necesario re-ingestar el corpus.
+El conocimiento estatico (RAG con ChromaDB) se hereda de la semana 02 pero el
+entregable es **autonomo**: el corpus (`corpus/`) y la base vectorial
+(`chroma_db/`) viven dentro de esta carpeta. No depende de `entregable-semana-02`.
 
 ## Requisitos previos
 
-1. Tener listo el entregable de la semana 02 con la base `chroma_db/` ya
-   generada (correr `python src/ingest.py` alli si aun no).
-2. Ollama corriendo localmente con los modelos `llama3.1:8b` y
+1. Ollama corriendo localmente con los modelos `llama3.1:8b` y
    `nomic-embed-text` descargados.
+2. La base vectorial `chroma_db/` (ya incluida). Si quieres regenerarla:
+   `python src/ingest.py` (lee `corpus/` y necesita Ollama + `nomic-embed-text`).
 3. Una cuenta valida en la API de SwingTails (registrarla via
    `POST /api/auth/register` o usar una existente). La contrasena debe tener
    **mayuscula + minuscula + numero + simbolo** (p.ej. `Password123!`).
@@ -34,11 +35,14 @@ copy .env.example .env
 # editar .env y poner SWINGTAILS_EMAIL + SWINGTAILS_PASSWORD
 # (o SWINGTAILS_JWT si ya tienes un token)
 
-# 3. Entorno Python (puedes reutilizar el de la semana 02; si no:)
+# 3. Entorno Python
 python -m venv .venv
-.\.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1        # en PowerShell (NO "activate")
 pip install -r requirements.txt
 ```
+
+> Atajo: `.\setup.ps1` hace los 3 pasos (modelo + .env + venv + deps) y, si
+> falta `chroma_db/`, la regenera con `ingest.py`.
 
 ## Uso
 
@@ -99,23 +103,38 @@ entregable-semana-03/
 ├── .env.example
 ├── README.md                  # este archivo
 ├── INFORME-semana-03.md       # documento auditable de la rubrica (Fase 2)
+├── corpus/                    # fuentes del RAG (productos, vets, guias, politicas)
+├── chroma_db/                 # base vectorial persistente (ya generada)
 └── src/
     ├── config.py              # rutas, JWT, host de Ollama
+    ├── ingest.py              # (re)genera chroma_db desde corpus/
+    ├── inspect_db.py          # utilidad para inspeccionar la base vectorial
+    ├── retrieve.py            # RAG (lee chroma_db local)
     ├── api_client.py          # cliente HTTP con JWT (por-peticion) y errores
     ├── tools.py               # 12 funciones + esquemas + dispatcher
-    ├── retrieve.py            # RAG (reusa chroma_db de la semana 02)
     ├── chat.py                # orquestador CLI: RAG + tool cycle + respuesta
     └── server.py              # servicio HTTP multiusuario (FastAPI)
 ```
 
-## Lista de funciones (12)
+## Lista de funciones (15)
 
 Lectura:
 `list_my_pets`, `get_pet`, `list_clinics`, `list_appointments`,
-`list_products`, `view_cart`, `purchase_history`.
+`list_products`, `get_product`, `view_cart`, `purchase_history`.
 
 Escritura:
-`register_pet`, `book_appointment`, `reschedule_appointment`,
-`cancel_appointment`, `add_to_cart`.
+`register_pet`, `update_pet`, `delete_pet`, `book_appointment`,
+`reschedule_appointment`, `cancel_appointment`, `add_to_cart`.
+
+> **Estado real en el despliegue actual.** La API publica diverge de su
+> Swagger: varios endpoints documentados devuelven 404 o 400. Funcionan
+> (verificado): `list_my_pets`, `get_pet`, `register_pet`, `update_pet`,
+> `delete_pet`, `list_clinics`, `list_appointments`, `list_products`,
+> `get_product`.
+> Hoy NO responden en el servidor: carrito (`add_to_cart`, `view_cart` ->
+> 404), `purchase_history` (404) y la creacion/edicion de citas
+> (`book_appointment`, `reschedule_appointment` -> 400 por esquema distinto).
+> Las dejamos expuestas porque la doc las contempla; si la API se actualiza
+> volveran a operar sin tocar el agente.
 
 Detalles, mapeo a endpoints y flujo paso a paso en `INFORME-semana-03.md`.

@@ -67,10 +67,10 @@ def get_pet(pet_id: int) -> dict:
 
 def register_pet(
     name: str,
+    specie: str,
     sex: str,
     age: str,
     height: str,
-    specie: str | None = None,
     breed: str | None = None,
     weight: float | None = None,
 ) -> dict:
@@ -78,10 +78,10 @@ def register_pet(
 
     Args:
         name: Nombre de la mascota.
+        specie: Especie (perro, gato, ...). OBLIGATORIO en la API real.
         sex: 'Macho' o 'Hembra' (enum estricto del API).
         age: 'Cachorro', 'Joven', 'Adulto' o 'Senior'.
         height: '<30', '30-40', '41-50', '51-60' o '>60' (cm).
-        specie: Especie (perro, gato, ...). Opcional.
         breed: Raza. Opcional.
         weight: Peso en kg. Opcional.
 
@@ -94,18 +94,79 @@ def register_pet(
         return dict(_NO_SESSION_ERROR)
     body: dict[str, Any] = {
         "name": name,
+        "specie": specie,
         "sex": sex,
         "age": age,
         "height": height,
         "user_id": uid,
     }
-    if specie is not None:
-        body["specie"] = specie
     if breed is not None:
         body["breed"] = breed
     if weight is not None:
         body["weight"] = float(weight)
     return get_client().post("/api/pets", json_body=body)
+
+
+def update_pet(
+    pet_id: int,
+    name: str,
+    specie: str,
+    sex: str,
+    age: str,
+    height: str,
+    breed: str | None = None,
+    weight: float | None = None,
+) -> dict:
+    """Actualiza los datos de una mascota existente del usuario.
+
+    IMPORTANTE: la API hace REEMPLAZO COMPLETO, no parcial. Debes enviar
+    TODOS los campos (no solo el que cambia) o los omitidos se pierden. Para
+    cambiar un solo dato: primero obten la ficha actual con list_my_pets,
+    luego llama update_pet repitiendo los valores actuales y modificando solo
+    lo que el usuario pidio.
+
+    Args:
+        pet_id: ID de la mascota a actualizar.
+        name: Nombre.
+        specie: Especie (perro, gato, ...).
+        sex: 'Macho' o 'Hembra'.
+        age: 'Cachorro', 'Joven', 'Adulto' o 'Senior'.
+        height: '<30', '30-40', '41-50', '51-60' o '>60'.
+        breed: Raza. Opcional.
+        weight: Peso en kg. Opcional.
+
+    Llama a PUT /api/pets/{id}. El user_id se toma de la sesion autenticada
+    (es obligatorio en el body: la API lo usa para validar la propiedad).
+    """
+    uid = _current_user_id()
+    if uid is None:
+        return dict(_NO_SESSION_ERROR)
+    body: dict[str, Any] = {
+        "name": name,
+        "specie": specie,
+        "sex": sex,
+        "age": age,
+        "height": height,
+        "user_id": uid,
+    }
+    if breed is not None:
+        body["breed"] = breed
+    if weight is not None:
+        body["weight"] = float(weight)
+    return get_client().put(f"/api/pets/{int(pet_id)}", json_body=body)
+
+
+def delete_pet(pet_id: int) -> dict:
+    """Elimina una mascota del usuario por su id.
+
+    Args:
+        pet_id: Identificador numerico de la mascota a eliminar.
+
+    Llama a DELETE /api/pets/{id}. Operacion destructiva: el LLM debe
+    confirmar con el usuario antes de invocarla y asegurarse de que el id
+    corresponde a la mascota correcta (usa list_my_pets si hay duda).
+    """
+    return get_client().delete(f"/api/pets/{int(pet_id)}")
 
 
 def list_clinics(limit: int = 10, page: int = 1) -> dict:
@@ -235,6 +296,18 @@ def list_products(limit: int = 10, page: int = 1) -> dict:
     )
 
 
+def get_product(product_id: int) -> dict:
+    """Obtiene el detalle completo de UN producto por su id.
+
+    Args:
+        product_id: Identificador numerico del producto.
+
+    Llama a GET /api/products/{id}. Util cuando el usuario quiere precio,
+    stock o descripcion de un producto especifico que vio en el catalogo.
+    """
+    return get_client().get(f"/api/products/{int(product_id)}")
+
+
 def add_to_cart(product_id: int, quantity: int = 1) -> dict:
     """Agrega un producto al carrito del usuario autenticado.
 
@@ -290,12 +363,15 @@ TOOL_REGISTRY: dict[str, Callable[..., Any]] = {
     "list_my_pets": list_my_pets,
     "get_pet": get_pet,
     "register_pet": register_pet,
+    "update_pet": update_pet,
+    "delete_pet": delete_pet,
     "list_clinics": list_clinics,
     "list_appointments": list_appointments,
     "book_appointment": book_appointment,
     "reschedule_appointment": reschedule_appointment,
     "cancel_appointment": cancel_appointment,
     "list_products": list_products,
+    "get_product": get_product,
     "add_to_cart": add_to_cart,
     "view_cart": view_cart,
     "purchase_history": purchase_history,
@@ -337,6 +413,7 @@ TOOL_SCHEMAS: list[dict] = [
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
+                    "specie": {"type": "string", "description": "perro, gato, etc."},
                     "sex": {"type": "string", "enum": ["Macho", "Hembra"]},
                     "age": {
                         "type": "string",
@@ -347,11 +424,51 @@ TOOL_SCHEMAS: list[dict] = [
                         "enum": ["<30", "30-40", "41-50", "51-60", ">60"],
                         "description": "Rango de altura en cm.",
                     },
-                    "specie": {"type": "string"},
                     "breed": {"type": "string"},
                     "weight": {"type": "number", "description": "Peso en kg."},
                 },
-                "required": ["name", "sex", "age", "height"],
+                "required": ["name", "specie", "sex", "age", "height"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_pet",
+            "description": "Actualiza una mascota existente. REEMPLAZO COMPLETO: envia todos los campos (usa list_my_pets para los valores actuales y cambia solo lo pedido). El user_id se infiere de la sesion.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pet_id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "specie": {"type": "string", "description": "perro, gato, etc."},
+                    "sex": {"type": "string", "enum": ["Macho", "Hembra"]},
+                    "age": {
+                        "type": "string",
+                        "enum": ["Cachorro", "Joven", "Adulto", "Senior"],
+                    },
+                    "height": {
+                        "type": "string",
+                        "enum": ["<30", "30-40", "41-50", "51-60", ">60"],
+                    },
+                    "breed": {"type": "string"},
+                    "weight": {"type": "number", "description": "Peso en kg."},
+                },
+                "required": ["pet_id", "name", "specie", "sex", "age", "height"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_pet",
+            "description": "Elimina una mascota del usuario por su id (operacion destructiva; confirma antes).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pet_id": {"type": "integer", "description": "ID de la mascota a eliminar."}
+                },
+                "required": ["pet_id"],
             },
         },
     },
@@ -458,6 +575,20 @@ TOOL_SCHEMAS: list[dict] = [
                     "page": {"type": "integer", "default": 1},
                 },
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_product",
+            "description": "Obtiene el detalle (precio, stock, descripcion) de un producto por su id.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_id": {"type": "integer", "description": "ID del producto."}
+                },
+                "required": ["product_id"],
             },
         },
     },

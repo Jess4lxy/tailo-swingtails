@@ -15,16 +15,18 @@ ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
 # ---------------------------------------------------------------------------
-# Rutas
+# Rutas (el entregable es autonomo: corpus y base vectorial viven aqui)
 # ---------------------------------------------------------------------------
-# El RAG vive en la carpeta de la semana 02 (no duplicamos la base vectorial).
-WEEK2_ROOT = ROOT.parent / "entregable-semana-02"
-CHROMA_DIR = WEEK2_ROOT / "chroma_db"
-CORPUS_DIR = WEEK2_ROOT / "corpus"
+CORPUS_DIR = ROOT / "corpus"
+CHROMA_DIR = ROOT / "chroma_db"
 
 COLLECTION_NAME = "tailo_swingtails"
 DISTANCE_METRIC = "cosine"
 TOP_K = 5
+
+# Chunking (usado por ingest.py si re-generas la base vectorial).
+CHUNK_SIZE = 500          # caracteres
+CHUNK_OVERLAP = 80        # ~16% de solapamiento para preservar contexto
 
 # ---------------------------------------------------------------------------
 # Ollama

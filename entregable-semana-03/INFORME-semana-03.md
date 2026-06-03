@@ -35,7 +35,7 @@ al usuario.
 | Modelo LLM | **Llama 3.1 8B** (Q4_K_M) | Recomendado por la rubrica para tool use; soporte nativo en Ollama desde 0.3. |
 | Cliente | `ollama==0.3.3` (Python) | Acepta el parametro `tools` y devuelve `tool_calls` estructurados. |
 | Persona-base | `tailo-agent` (Modelfile) | Hereda de `llama3.1:8b` + system prompt que define *cuando* usar tools y *cuando* RAG. |
-| Vector DB | ChromaDB persistente | Reutilizamos `entregable-semana-02/chroma_db/` sin re-ingerir. |
+| Vector DB | ChromaDB persistente | Heredada de la semana 02 pero incluida localmente (`chroma_db/` + `corpus/`); el entregable es autonomo. |
 | HTTP | `requests==2.32.3` | Cliente sincronico, suficiente para 1 turno. |
 
 ---
@@ -50,7 +50,7 @@ al usuario.
                           | 1. embed + ChromaDB top-k
                           v
                  +------------------+
-                 |  Retriever (RAG) |  (reusa semana 02)
+                 |  Retriever (RAG) |  (chroma_db local)
                  +------------------+
                           |
                           | 2. Inyecta bloque RAG en mensaje user
@@ -182,26 +182,37 @@ permanentemente en la memoria del agente"*. Lo cumplimos asi:
 
 ---
 
-## 5. Lista de funciones locales expuestas (12)
+## 5. Lista de funciones locales expuestas (15)
 
-La rubrica exige entre 7 y 15 funciones. Elegimos **12** que cubren las
+La rubrica exige entre 7 y 15 funciones. Exponemos **15** que cubren las
 operaciones tipicas del tutor de mascotas. Todas requieren JWT (excepto
-`auth/login`, que se hace fuera del flujo conversacional).
+`auth/login`, que se hace fuera del flujo conversacional). El `user_id` de las
+operaciones de escritura se toma de la sesion (JWT), no del modelo.
 
-| # | Funcion | Endpoint | Tipo |
-|---|---------|----------|------|
-| 1 | `list_my_pets` | `GET /api/user/pets` | lectura |
-| 2 | `get_pet` | `GET /api/pets/{id}` | lectura |
-| 3 | `register_pet` | `POST /api/pets` | escritura |
-| 4 | `list_clinics` | `GET /api/veterinary` | lectura |
-| 5 | `list_appointments` | `GET /api/appointments` | lectura |
-| 6 | `book_appointment` | `POST /api/appointments` | escritura |
-| 7 | `reschedule_appointment` | `PUT /api/appointments/{id}` | escritura |
-| 8 | `cancel_appointment` | `DELETE /api/appointments/{id}` | escritura |
-| 9 | `list_products` | `GET /api/products` | lectura |
-| 10 | `add_to_cart` | `POST /api/cart` | escritura |
-| 11 | `view_cart` | `GET /api/cart` | lectura |
-| 12 | `purchase_history` | `GET /api/purchase-history` | lectura |
+| # | Funcion | Endpoint | Tipo | Estado en el despliegue |
+|---|---------|----------|------|-------------------------|
+| 1 | `list_my_pets` | `GET /api/user/pets` | lectura | OK |
+| 2 | `get_pet` | `GET /api/pets/{id}` | lectura | OK |
+| 3 | `register_pet` | `POST /api/pets` | escritura | OK (`specie` es obligatorio) |
+| 4 | `update_pet` | `PUT /api/pets/{id}` | escritura | OK (reemplazo completo; requiere `user_id` en el body) |
+| 5 | `delete_pet` | `DELETE /api/pets/{id}` | escritura | OK |
+| 6 | `list_clinics` | `GET /api/veterinary` | lectura | OK |
+| 7 | `list_appointments` | `GET /api/appointments` | lectura | OK |
+| 8 | `book_appointment` | `POST /api/appointments` | escritura | 400: esquema real difiere del Swagger |
+| 9 | `reschedule_appointment` | `PUT /api/appointments/{id}` | escritura | 400: idem |
+| 10 | `cancel_appointment` | `DELETE /api/appointments/{id}` | escritura | sin verificar |
+| 11 | `list_products` | `GET /api/products` | lectura | OK |
+| 12 | `get_product` | `GET /api/products/{id}` | lectura | OK |
+| 13 | `add_to_cart` | `POST /api/cart` | escritura | 404: endpoint ausente |
+| 14 | `view_cart` | `GET /api/cart` | lectura | 404: endpoint ausente |
+| 15 | `purchase_history` | `GET /api/purchase-history` | lectura | 404: endpoint ausente |
+
+> **Nota de auditoria.** La API publica desplegada implementa solo un
+> subconjunto de su documentacion Swagger. Verificamos endpoint por endpoint:
+> las 9 funciones marcadas "OK" operan end-to-end; las demas quedan expuestas
+> (la doc las contempla y volveran a funcionar si el backend se alinea) pero
+> hoy el servidor responde 404/400. El agente las maneja sin romperse: el
+> error se devuelve como `{"error": ...}` y Tailo se lo explica al usuario.
 
 ---
 
@@ -272,5 +283,5 @@ python src\chat.py         # REPL interactivo
 | Precision y extraccion de parametros | 4 - Sobresaliente | Schemas con enums estrictos + temperatura 0.2 |
 | Toma de decisiones (When2Call) | 4 - Sobresaliente | System prompt explicito: pedir datos faltantes, no inventar |
 | Gestion de intercepcion y errores | 4 - Sobresaliente | Tools devuelven dict de error, nunca crashea; max_iters; sanitizacion del historial |
-| Equidad y modularidad | 3-4 | 3 modulos separados (api_client / tools / chat), reutiliza retrieve.py de semana 02 |
+| Equidad y modularidad | 3-4 | modulos separados (api_client / tools / chat / server), pipeline RAG (ingest/retrieve) incluido localmente |
 | Videos y documentacion | 4 (pendiente del equipo) | Este documento + log verbose en chat.py para el video |

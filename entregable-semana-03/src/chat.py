@@ -136,6 +136,10 @@ def _run_tool_cycle(
             messages=messages,
             tools=TOOL_SCHEMAS,
             stream=False,
+            # Decision deterministica: con temperatura 0 el modelo no "duda"
+            # entre llamar la tool o responder con RAG (clave para que las
+            # consultas de estado de cuenta SIEMPRE disparen la herramienta).
+            options={"temperature": 0},
         )
         msg = resp.get("message", {}) or {}
         tool_calls = msg.get("tool_calls") or []
