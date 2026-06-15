@@ -20,6 +20,9 @@ __pycache__/
 entregable-semana-02/chroma_db/
 entregable-semana-02/evaluacion/ragas_results.json
 
+# Memoria de sesiones (SQLite de runtime, se regenera al conversar)
+entregable-semana-04/data/
+
 # =============================================================================
 # Secretos y entornos locales
 # =============================================================================

@@ -18,7 +18,9 @@ Prototipo academico de un asistente conversacional con IA local (sin nube) para 
 ```
 desarrolloWeb/
 ├── entregable-semana-01/   <- Motor de inferencia local (Ollama + Llama 3.1 8B)
-└── entregable-semana-02/   <- Capa RAG (ChromaDB + nomic-embed-text + RAGAS)
+├── entregable-semana-02/   <- Capa RAG (ChromaDB + nomic-embed-text + RAGAS)
+├── entregable-semana-03/   <- Function Calling sobre la API de SwingTails
+└── entregable-semana-04/   <- Memoria persistente y multi-sesion (SQLite)
 ```
 
 Cada carpeta es un entregable independiente con su propio `README.md` y guion de demo.
@@ -27,6 +29,8 @@ Cada carpeta es un entregable independiente con su propio `README.md` y guion de
 |---|---|---|
 | [Semana 01](./entregable-semana-01/) | Configuracion del motor LLM local, Modelfile de Tailo, benchmark de TTFT/throughput, prueba de endpoint OpenAI-compatible con streaming. | `Modelfile`, `demo-profesor.txt` |
 | [Semana 02](./entregable-semana-02/) | Pipeline RAG completo: ingesta + chunking + embeddings + ChromaDB persistente + recuperacion + evaluacion RAGAS. | `Modelfile.tailo-rag`, `src/`, `corpus/`, `INFORME-semana-02.md` |
+| [Semana 03](./entregable-semana-03/) | Function Calling: 15 tools sobre la API publica de SwingTails (mascotas, citas, resenas) + servicio HTTP multiusuario con JWT. | `src/tools.py`, `src/server.py`, `INFORME-semana-03.md` |
+| [Semana 04](./entregable-semana-04/) | Persistencia de memoria: conversaciones multi-sesion en SQLite (`conversation_id`), ventana de contexto (sliding + resumen) y resiliencia anti *state poisoning*. | `src/sessions.py`, `src/server.py`, `INFORME-semana-04.md` |
 
 ---
 

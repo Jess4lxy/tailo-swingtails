@@ -103,7 +103,8 @@ entregable-semana-03/
 ├── .env.example
 ├── README.md                  # este archivo
 ├── INFORME-semana-03.md       # documento auditable de la rubrica (Fase 2)
-├── corpus/                    # fuentes del RAG (productos, vets, guias, politicas)
+├── corpus/                    # fuentes; el RAG indexa SOLO guias_cuidado.md y
+│                              # politicas_swingtails.md (clinicas/productos -> API)
 ├── chroma_db/                 # base vectorial persistente (ya generada)
 └── src/
     ├── config.py              # rutas, JWT, host de Ollama
@@ -120,21 +121,25 @@ entregable-semana-03/
 
 Lectura:
 `list_my_pets`, `get_pet`, `list_clinics`, `list_appointments`,
-`list_products`, `get_product`, `view_cart`, `purchase_history`.
+`list_products`, `get_product`, `list_clinic_reviews`, `get_clinic_rating`.
 
 Escritura:
 `register_pet`, `update_pet`, `delete_pet`, `book_appointment`,
-`reschedule_appointment`, `cancel_appointment`, `add_to_cart`.
+`reschedule_appointment`, `cancel_appointment`, `review_clinic`.
 
-> **Estado real en el despliegue actual.** La API publica diverge de su
-> Swagger: varios endpoints documentados devuelven 404 o 400. Funcionan
-> (verificado): `list_my_pets`, `get_pet`, `register_pet`, `update_pet`,
-> `delete_pet`, `list_clinics`, `list_appointments`, `list_products`,
-> `get_product`.
-> Hoy NO responden en el servidor: carrito (`add_to_cart`, `view_cart` ->
-> 404), `purchase_history` (404) y la creacion/edicion de citas
-> (`book_appointment`, `reschedule_appointment` -> 400 por esquema distinto).
-> Las dejamos expuestas porque la doc las contempla; si la API se actualiza
-> volveran a operar sin tocar el agente.
+> **Esquemas verificados contra el codigo real del backend.** Ajustamos las
+> tools al contrato que implementa el servidor (no al Swagger, que difiere):
+> - Citas: `book_appointment` recibe NOMBRES (`pet_name`, `clinic_name`,
+>   `service_name`, `appointment_date`, `hour`) y resuelve los ids reales en
+>   codigo (el modelo no inventa ids); si un nombre no existe, devuelve las
+>   opciones disponibles. `list_appointments` consulta `/api/appointments/user`.
+> - Reseñas: son de **clinicas** en `/api/veterinary-reviews`
+>   (`list_clinic_reviews`, `get_clinic_rating`, `review_clinic`).
+> - Mascotas: `register_pet` exige `specie`; `update_pet` es reemplazo completo.
+>
+> Se retiraron `add_to_cart`, `view_cart` y `purchase_history`: el backend
+> desplegado **no implementa** carrito ni ordenes (no existen esos
+> controladores/rutas en el codigo). `reschedule_appointment`/`cancel_appointment`
+> pueden devolver 500 intermitente por inestabilidad de la BD de Render.
 
 Detalles, mapeo a endpoints y flujo paso a paso en `INFORME-semana-03.md`.

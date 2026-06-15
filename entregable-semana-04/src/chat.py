@@ -36,6 +36,7 @@ import time
 
 import ollama
 
+import sessions
 from api_client import get_client
 from config import LLM_MODEL, OLLAMA_HOST, TOP_K
 from retrieve import Retriever
@@ -232,21 +233,62 @@ def answer(question: str, top_k: int = TOP_K, verbose: bool = True) -> dict:
     }
 
 
-def repl(top_k: int = TOP_K, max_history_turns: int = 6, verbose: bool = True) -> None:
-    """REPL con memoria conversacional. Limpia bloques RAG viejos del historial."""
-    print("Tailo Agent (RAG + Function Calling) - escribe 'salir' para terminar.")
-    print("Tip: 'reset' limpia el historial. 'verbose on/off' alterna el log de tools.")
-    print("     'login' inicia/renueva sesion de usuario.\n")
+def _print_sessions(user_id: int | None, active_id: str | None) -> None:
+    """Muestra el selector de conversaciones persistidas del usuario."""
+    convs = sessions.list_conversations(user_id=user_id)
+    if not convs:
+        print("[no hay conversaciones guardadas todavia]\n")
+        return
+    print("Conversaciones guardadas (mas reciente primero):")
+    for c in convs:
+        mark = "->" if c["id"] == active_id else "  "
+        short = c["id"][:8]
+        print(
+            f"  {mark} {short}  {c['title'][:40]:<40} "
+            f"({c['n_messages']} msj, {c['updated_at']})"
+        )
+    print("Usa 'abrir <id-corto>' para retomar una, 'nueva' para empezar otra.\n")
+
+
+def _resolve_conv(short_or_full: str, user_id: int | None) -> str | None:
+    """Resuelve un id corto (prefijo) o completo a un conversation_id real."""
+    for c in sessions.list_conversations(user_id=user_id, limit=200):
+        if c["id"] == short_or_full or c["id"].startswith(short_or_full):
+            return c["id"]
+    return None
+
+
+def repl(top_k: int = TOP_K, verbose: bool = True) -> None:
+    """REPL con memoria conversacional PERSISTENTE (SQLite) y multi-sesion.
+
+    Cada conversacion vive en la BD con su conversation_id (UUID). El historial
+    se recupera/guarda en disco, asi sobrevive reinicios. La ventana de contexto
+    se gestiona con ventana deslizante + resumen (sessions.compact).
+    """
+    sessions.init_db()
+    print("Tailo Agent (memoria persistente) - escribe 'salir' para terminar.")
+    print("Comandos: 'nueva' (otra conversacion), 'sesiones' (listar),")
+    print("          'abrir <id>' (retomar), 'borrar <id>', 'titulo <texto>',")
+    print("          'historial' (ver turnos), 'verbose on/off', 'login', 'whoami'.\n")
 
     retriever = Retriever(top_k=top_k)
     client = ollama.Client(host=OLLAMA_HOST)
-    history: list[dict] = []
 
-    # Sesion: intenta usar credenciales del .env; si no hay, pide login.
-    api = get_client()  # dispara ensure_authenticated() (login via .env si existe)
+    # Sesion de usuario: intenta usar credenciales del .env; si no hay, pide login.
+    api = get_client()
     if not api.has_token:
         _interactive_login()
     _print_session_status()
+    user_id = api.current_user_id
+
+    # Retoma la ultima conversacion del usuario o crea una nueva.
+    existing = sessions.list_conversations(user_id=user_id, limit=1)
+    if existing:
+        conv_id = existing[0]["id"]
+        print(f"[retomando conversacion {conv_id[:8]} - '{existing[0]['title']}']\n")
+    else:
+        conv_id = sessions.create_conversation(user_id=user_id)
+        print(f"[nueva conversacion {conv_id[:8]}]\n")
 
     while True:
         try:
@@ -257,11 +299,48 @@ def repl(top_k: int = TOP_K, max_history_turns: int = 6, verbose: bool = True) -
         if not q:
             continue
         low = q.lower()
+
+        # --- comandos de control ------------------------------------------
         if low in {"salir", "exit", "quit"}:
             return
-        if low in {"reset", "clear"}:
-            history = []
-            print("[historial reiniciado]\n")
+        if low in {"nueva", "new", "reset", "clear"}:
+            conv_id = sessions.create_conversation(user_id=user_id)
+            print(f"[nueva conversacion {conv_id[:8]}]\n")
+            continue
+        if low in {"sesiones", "list", "sessions"}:
+            _print_sessions(user_id, conv_id)
+            continue
+        if low.startswith("abrir ") or low.startswith("open "):
+            target = q.split(" ", 1)[1].strip()
+            resolved = _resolve_conv(target, user_id)
+            if resolved:
+                conv_id = resolved
+                conv = sessions.get_conversation(conv_id)
+                print(f"[abierta {conv_id[:8]} - '{conv['title']}']\n")
+            else:
+                print(f"[no encontre la conversacion '{target}']\n")
+            continue
+        if low.startswith("borrar ") or low.startswith("delete "):
+            target = q.split(" ", 1)[1].strip()
+            resolved = _resolve_conv(target, user_id)
+            if resolved:
+                sessions.delete_conversation(resolved)
+                print(f"[borrada {resolved[:8]}]\n")
+                if resolved == conv_id:
+                    conv_id = sessions.create_conversation(user_id=user_id)
+                    print(f"[nueva conversacion {conv_id[:8]}]\n")
+            else:
+                print(f"[no encontre la conversacion '{target}']\n")
+            continue
+        if low.startswith("titulo ") or low.startswith("title "):
+            sessions.rename_conversation(conv_id, q.split(" ", 1)[1].strip())
+            print("[titulo actualizado]\n")
+            continue
+        if low in {"historial", "history"}:
+            for m in sessions.get_all_messages(conv_id):
+                tag = " (resumido)" if m["summarized"] else ""
+                print(f"  [{m['role']}{tag}] {m['content'][:80]}")
+            print()
             continue
         if low == "verbose on":
             verbose = True
@@ -273,50 +352,49 @@ def repl(top_k: int = TOP_K, max_history_turns: int = 6, verbose: bool = True) -
             continue
         if low == "login":
             _interactive_login()
+            user_id = api.current_user_id
             continue
         if low in {"whoami", "sesion", "session"}:
             _print_session_status()
             continue
 
+        # --- turno de chat ------------------------------------------------
         user_msg, chunks, ret_lat = build_user_message(q, retriever, top_k=top_k)
 
-        # Sanitiza historial viejo: quita bloques RAG y descarta los
-        # mensajes role=tool de turnos previos (ya no son contexto util y
-        # confunden al modelo si se acumulan).
-        sanitized: list[dict] = []
-        for m in history:
-            if m.get("role") == "tool":
-                continue
-            if m.get("role") == "assistant" and m.get("tool_calls"):
-                # mensajes "vacios" que solo llevaban tool_calls: descartar.
-                continue
-            if m.get("role") == "user":
-                sanitized.append({"role": "user", "content": strip_info_block(m["content"])})
-            else:
-                sanitized.append({"role": m["role"], "content": m.get("content", "")})
-
-        if len(sanitized) > max_history_turns * 2:
-            sanitized = sanitized[-max_history_turns * 2 :]
-
-        messages = sanitized + [{"role": "user", "content": _date_prefix() + user_msg}]
+        # C. Logica de prompting: recupera el buffer historico persistido
+        # (resumen + turnos recientes) y le concatena el mensaje nuevo, que es
+        # el unico que lleva el bloque RAG + la fecha del dia.
+        context = sessions.build_context(conv_id)
+        messages = context + [{"role": "user", "content": _date_prefix() + user_msg}]
 
         # Fase 1: ciclo de tools (silencioso para el usuario salvo verbose).
+        # Los mensajes role=tool y los tool_calls viven SOLO en este buffer
+        # efimero; nunca tocan la BD -> la memoria de largo plazo no se envenena.
         messages = _run_tool_cycle(client, messages, verbose=verbose)
 
         # Fase 2: respuesta conversacional final en streaming.
         print("\nTailo: ", end="", flush=True)
         final, ttft = _stream_final(client, messages)
 
-        # Memoria: solo guardamos el par user/assistant final, sin tool calls,
-        # para que un error de tool no se "pegue" como verdad en turnos futuros.
-        history.append({"role": "user", "content": user_msg})
-        history.append({"role": "assistant", "content": final})
+        # B. Persistencia: guardamos el par user/assistant LIMPIO (sin bloque
+        # RAG ni tool calls) en SQLite.
+        sessions.append_turn(conv_id, q, final)
+
+        # D. Ventana de contexto: compacta (ventana deslizante + resumen) si el
+        # historial activo supera el presupuesto de tokens.
+        comp = sessions.compact(conv_id, client=client, model=LLM_MODEL)
 
         srcs = sorted({c.metadata.get("source", "?") for c in chunks})
+        n_turns = len(sessions.get_all_messages(conv_id)) // 2
+        extra = (
+            f" | compactado: {comp['summarized_messages']} msj resumidos "
+            f"({comp['tokens_before']}->{comp['tokens_after']} tok)"
+            if comp["compacted"]
+            else ""
+        )
         print(
-            f"[fuentes: {', '.join(srcs)} | TTFT {round(ttft or 0, 2)}ms "
-            f"| recuperacion {ret_lat['ms_total']}ms "
-            f"| historial {len(history)//2} turno(s)]\n"
+            f"[conv {conv_id[:8]} | fuentes: {', '.join(srcs)} | TTFT {round(ttft or 0, 2)}ms "
+            f"| recuperacion {ret_lat['ms_total']}ms | {n_turns} turno(s){extra}]\n"
         )
 
 

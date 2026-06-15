@@ -21,6 +21,8 @@ Endpoints:
 """
 from __future__ import annotations
 
+import datetime
+
 import ollama
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -115,10 +117,15 @@ def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> 
     ctx_token = api_client.use_request_client(client)
     try:
         user_msg, chunks, _lat = build_user_message(req.message, _retriever(), top_k=TOP_K)
-        messages = _sanitize_history(req.history) + [{"role": "user", "content": user_msg}]
+        today = datetime.date.today().isoformat()
+        user_msg = f"[Fecha de hoy: {today}. Si el usuario da una fecha sin año, usa el año actual.]\n\n{user_msg}"
+        messages = _sanitize_history(req.history) + [
+            {"role": "user", "content": user_msg}
+        ]
 
-        # Fase 1: ciclo de tools (verbose=False; no hay consola del lado servidor).
-        messages = _run_tool_cycle(_ollama(), messages, verbose=False)
+        # Fase 1: ciclo de tools (verbose=True: imprime tool_call/tool_result en
+        # la consola del servidor, util para depurar la entrega).
+        messages = _run_tool_cycle(_ollama(), messages, verbose=True)
         # Fase 2: respuesta final.
         reply = _generate_final(messages)
 

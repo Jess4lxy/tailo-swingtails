@@ -189,30 +189,34 @@ operaciones tipicas del tutor de mascotas. Todas requieren JWT (excepto
 `auth/login`, que se hace fuera del flujo conversacional). El `user_id` de las
 operaciones de escritura se toma de la sesion (JWT), no del modelo.
 
-| # | Funcion | Endpoint | Tipo | Estado en el despliegue |
-|---|---------|----------|------|-------------------------|
+| # | Funcion | Endpoint | Tipo | Estado |
+|---|---------|----------|------|--------|
 | 1 | `list_my_pets` | `GET /api/user/pets` | lectura | OK |
 | 2 | `get_pet` | `GET /api/pets/{id}` | lectura | OK |
-| 3 | `register_pet` | `POST /api/pets` | escritura | OK (`specie` es obligatorio) |
-| 4 | `update_pet` | `PUT /api/pets/{id}` | escritura | OK (reemplazo completo; requiere `user_id` en el body) |
+| 3 | `register_pet` | `POST /api/pets` | escritura | OK (`specie` obligatorio) |
+| 4 | `update_pet` | `PUT /api/pets/{id}` | escritura | OK (reemplazo completo + `user_id`) |
 | 5 | `delete_pet` | `DELETE /api/pets/{id}` | escritura | OK |
 | 6 | `list_clinics` | `GET /api/veterinary` | lectura | OK |
-| 7 | `list_appointments` | `GET /api/appointments` | lectura | OK |
-| 8 | `book_appointment` | `POST /api/appointments` | escritura | 400: esquema real difiere del Swagger |
-| 9 | `reschedule_appointment` | `PUT /api/appointments/{id}` | escritura | 400: idem |
-| 10 | `cancel_appointment` | `DELETE /api/appointments/{id}` | escritura | sin verificar |
+| 7 | `list_appointments` | `GET /api/appointments/user` | lectura | OK (citas del usuario) |
+| 8 | `book_appointment` | `POST /api/appointments` | escritura | OK (`pet_name` + `services:[{offering_id,price}]`) |
+| 9 | `reschedule_appointment` | `PUT /api/appointments/{id}` | escritura | OK* (500 intermitente del backend) |
+| 10 | `cancel_appointment` | `DELETE /api/appointments/{id}` | escritura | OK* (500 intermitente del backend) |
 | 11 | `list_products` | `GET /api/products` | lectura | OK |
 | 12 | `get_product` | `GET /api/products/{id}` | lectura | OK |
-| 13 | `add_to_cart` | `POST /api/cart` | escritura | 404: endpoint ausente |
-| 14 | `view_cart` | `GET /api/cart` | lectura | 404: endpoint ausente |
-| 15 | `purchase_history` | `GET /api/purchase-history` | lectura | 404: endpoint ausente |
+| 13 | `list_clinic_reviews` | `GET /api/veterinary-reviews/{id}` | lectura | OK |
+| 14 | `get_clinic_rating` | `GET /api/veterinary-reviews/{id}/average` | lectura | OK |
+| 15 | `review_clinic` | `POST /api/veterinary-reviews` | escritura | OK |
 
-> **Nota de auditoria.** La API publica desplegada implementa solo un
-> subconjunto de su documentacion Swagger. Verificamos endpoint por endpoint:
-> las 9 funciones marcadas "OK" operan end-to-end; las demas quedan expuestas
-> (la doc las contempla y volveran a funcionar si el backend se alinea) pero
-> hoy el servidor responde 404/400. El agente las maneja sin romperse: el
-> error se devuelve como `{"error": ...}` y Tailo se lo explica al usuario.
+> **Nota de auditoria.** Con acceso al codigo del backend ajustamos cada tool
+> al contrato REAL implementado (el Swagger difiere en varios puntos). El
+> `user_id` siempre sale del JWT. Hallazgos relevantes: el carrito, las
+> ordenes y los historiales documentados en Swagger **no existen** en el
+> backend (no hay controladores ni rutas), por lo que se retiraron del agente;
+> las reseñas son de clinicas (`/api/veterinary-reviews`), no de productos; y
+> la creacion de citas usa `pet_name` + `services:[{offering_id, price}]` con
+> verificacion de slot (409 si el horario esta ocupado). El (*) en
+> reagendar/cancelar indica un 500 intermitente atribuible a la BD de Render
+> (free tier), no a la llamada del agente.
 
 ---
 
