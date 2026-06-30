@@ -1,0 +1,173 @@
+{
+  "info": {
+    "name": "Tailo Agent - Semana 04 (Memoria Persistente)",
+    "_postman_id": "tailo-s04-memoria-persistente",
+    "description": "Coleccion para probar el agente Tailo con memoria persistente y multi-sesion.\n\nFLUJO RAPIDO:\n1) Edita las variables de la coleccion: `email` y `password` (tu cuenta de SwingTails).\n2) Ejecuta **Login (obtener JWT)** -> guarda el token en la variable `jwt` automaticamente.\n3) Ejecuta **Chat - Turno 1** -> crea la conversacion y guarda `conversationId` automaticamente.\n4) Ejecuta **Chat - Turno 2** -> reusa `conversationId` y comprueba que recuerda el contexto.\n5) Prueba **Listar / Ver / Borrar conversaciones**.\n\nEl servidor local debe estar arriba: `uvicorn server:app --port 8000` (desde src/).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{jwt}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000", "type": "string" },
+    { "key": "apiBase", "value": "https://swingtails-api-yz02.onrender.com", "type": "string" },
+    { "key": "email", "value": "TU_EMAIL@ejemplo.com", "type": "string" },
+    { "key": "password", "value": "TU_PASSWORD", "type": "string" },
+    { "key": "jwt", "value": "", "type": "string" },
+    { "key": "conversationId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Login (obtener JWT)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{apiBase}}/api/auth/login",
+          "host": ["{{apiBase}}"],
+          "path": ["api", "auth", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "description": "Inicia sesion en la API de SwingTails y devuelve el accessToken. El script de Tests lo guarda en la variable de coleccion `jwt`."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "const token = json?.data?.accessToken || json?.accessToken || json?.token;",
+              "if (token) {",
+              "  pm.collectionVariables.set('jwt', token);",
+              "  console.log('JWT guardado en la variable jwt');",
+              "} else {",
+              "  console.warn('No encontre accessToken en la respuesta:', json);",
+              "}",
+              "pm.test('Login devolvio token', function () { pm.expect(token, 'accessToken').to.be.a('string'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+        "description": "Estado del servicio y modelo activo. No requiere JWT."
+      }
+    },
+    {
+      "name": "Chat - Turno 1 (nueva conversacion)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"Hola, mi perro se llama Toby y es un labrador.\"\n}"
+        },
+        "description": "No envia conversation_id -> el backend crea un hilo nuevo y devuelve su conversation_id. El script lo guarda en la variable `conversationId`."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json?.conversation_id) {",
+              "  pm.collectionVariables.set('conversationId', json.conversation_id);",
+              "  console.log('conversationId guardado:', json.conversation_id);",
+              "}",
+              "pm.test('Devolvio conversation_id', function () { pm.expect(json.conversation_id).to.be.a('string'); });",
+              "pm.test('Es el primer turno', function () { pm.expect(json.turns).to.eql(1); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat - Turno 2 (continua el hilo)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"Que raza te dije que era mi perro?\",\n  \"conversation_id\": \"{{conversationId}}\"\n}"
+        },
+        "description": "Reenvia el conversation_id del turno 1 -> el backend recupera el historial y el modelo debe recordar que Toby es labrador (contexto mantenido)."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.test('Mismo hilo', function () { pm.expect(json.conversation_id).to.eql(pm.collectionVariables.get('conversationId')); });",
+              "pm.test('Recuerda el contexto (menciona labrador)', function () { pm.expect(json.reply.toLowerCase()).to.include('labrador'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat - Forzar nueva sesion (no recuerda)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/chat", "host": ["{{baseUrl}}"], "path": ["chat"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"Que raza es mi perro?\",\n  \"new_session\": true\n}"
+        },
+        "description": "Con new_session=true se crea un hilo limpio que NO conoce a Toby. Demuestra la diferenciacion de sesiones."
+      }
+    },
+    {
+      "name": "Listar conversaciones",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/conversations", "host": ["{{baseUrl}}"], "path": ["conversations"] },
+        "description": "Lista las conversaciones del usuario autenticado (aisladas por user_id del JWT)."
+      }
+    },
+    {
+      "name": "Ver conversacion (historial)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/conversations/{{conversationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["conversations", "{{conversationId}}"]
+        },
+        "description": "Devuelve el historial completo (bitacora integra, incluye lo ya resumido) y el resumen acumulado del hilo."
+      }
+    },
+    {
+      "name": "Borrar conversacion",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/conversations/{{conversationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["conversations", "{{conversationId}}"]
+        },
+        "description": "Elimina el hilo (solo si pertenece al usuario del JWT)."
+      }
+    }
+  ]
+}

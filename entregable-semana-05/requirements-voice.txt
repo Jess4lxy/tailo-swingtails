@@ -1,0 +1,12 @@
+# Dependencia opcional de VOZ (Speech-to-Text con Whisper local) - semana 05.
+#
+# Instalacion:   pip install -r requirements-voice.txt
+#
+# IMPORTANTE: faster-whisper arrastra 'av' (PyAV), que a la fecha NO publica
+# wheel para Python 3.14 -> pip intenta compilarlo desde fuente y falla por
+# falta de los headers de FFmpeg. Usa un venv con **Python 3.11 o 3.12** para
+# instalar la voz. El resto del backend (texto, streaming, guardrails,
+# observabilidad) corre sin este paquete.
+#
+# Corre en CPU (compute int8) para NO competir con la VRAM que ocupa Llama 3.1.
+faster-whisper==1.0.3
