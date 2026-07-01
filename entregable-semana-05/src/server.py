@@ -29,6 +29,8 @@ Endpoints:
     GET    /conversations              lista las conversaciones del usuario
     GET    /conversations/{id}         devuelve el historial completo
     DELETE /conversations/{id}         borra una conversacion
+    GET    /observability              bitacora de auditoria (?session_id, ?limit)
+    GET    /observability/stats        agregados (TTFT/latencia/tps, % bloqueos)
 """
 from __future__ import annotations
 
@@ -652,6 +654,67 @@ def delete_conversation(conversation_id: str, authorization: str | None = Header
         return {"deleted": conversation_id}
     finally:
         api_client.reset_request_client(ctx_token)
+
+
+# ---------------------------------------------------------------------------
+# Observabilidad (Bitacora de Auditoria) - lectura para el frontend
+# ---------------------------------------------------------------------------
+# La TABLA de auditoria (observability_logs) se escribe en cada turno (ver
+# observability.log_interaction). Estos endpoints la EXPONEN para que el front
+# muestre la "Bitacora de Auditoria" y para el video de la rubrica.
+def _obs_row(row: dict) -> dict:
+    """Normaliza una fila para el front: was_blocked -> bool, tools -> lista."""
+    try:
+        tools = json.loads(row.get("tools_executed") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        tools = []
+    return {
+        "id": row.get("id"),
+        "session_id": row.get("session_id"),
+        "timestamp": row.get("timestamp"),
+        "user_prompt": row.get("user_prompt"),
+        "system_response": row.get("system_response"),
+        "ttft_ms": row.get("ttft_ms"),
+        "total_latency_ms": row.get("total_latency_ms"),
+        "tokens_per_second": row.get("tokens_per_second"),
+        "was_blocked": bool(row.get("was_blocked")),
+        "tools_executed": tools,
+    }
+
+
+@app.get("/observability")
+def observability_logs(
+    session_id: str | None = None,
+    limit: int = 50,
+    authorization: str | None = Header(default=None),
+) -> list[dict]:
+    """Devuelve los registros de auditoria, mas reciente primero.
+
+    - `?session_id=<conversation_id>` filtra por una conversacion (los datos
+      por sesion que necesita el front).
+    - `?limit=<n>` acota la cantidad (1..500).
+    Requiere JWT valido (es una vista de auditoria)."""
+    _validate_token(authorization)
+    limit = max(1, min(int(limit), 500))
+    rows = observability.recent_logs(limit=limit, session_id=session_id)
+    return [_obs_row(r) for r in rows]
+
+
+@app.get("/observability/stats")
+def observability_stats(authorization: str | None = Header(default=None)) -> dict:
+    """Agregados para el informe: total, % bloqueados, TTFT/latencia/tps medios."""
+    _validate_token(authorization)
+    s = observability.stats()
+    total = s.get("total") or 0
+    blocked = s.get("blocked") or 0
+    return {
+        "total": total,
+        "blocked": blocked,
+        "blocked_pct": round(100 * blocked / total, 2) if total else 0,
+        "avg_ttft_ms": round(s["avg_ttft_ms"], 2) if s.get("avg_ttft_ms") else None,
+        "avg_latency_ms": round(s["avg_latency_ms"], 2) if s.get("avg_latency_ms") else None,
+        "avg_tokens_per_second": round(s["avg_tps"], 2) if s.get("avg_tps") else None,
+    }
 
 
 if __name__ == "__main__":

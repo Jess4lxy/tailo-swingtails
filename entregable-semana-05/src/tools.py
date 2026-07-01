@@ -62,6 +62,19 @@ def _match_by_name(items: Any, name: str, key: str = "name") -> dict | None:
 # Funciones - PERFIL TUTOR
 # ===========================================================================
 
+def _explicit_if_empty(result: Any, mensaje_vacio: str) -> Any:
+    """Si `result` es una lista VACIA, la envuelve en un mensaje explicito.
+
+    Un modelo 8B que recibe `[]` a veces ALUCINA elementos plausibles (p.ej.
+    invents mascotas 'Luna, Max, Bella') en vez de reportar el vacio. Devolver
+    un texto claro ('el usuario NO tiene ...') es una red de seguridad
+    deterministica: el modelo ya no puede ignorar el vacio. Los resultados NO
+    vacios se devuelven tal cual (el modelo los reporta bien)."""
+    if isinstance(result, list) and not result:
+        return {"vacio": True, "mensaje": mensaje_vacio}
+    return result
+
+
 def list_my_pets() -> dict:
     """Lista las mascotas del usuario autenticado.
 
@@ -69,7 +82,11 @@ def list_my_pets() -> dict:
     "que mascotas tengo registradas" o necesita el id de una mascota
     para agendar una cita.
     """
-    return get_client().get("/api/user/pets")
+    return _explicit_if_empty(
+        get_client().get("/api/user/pets"),
+        "El usuario NO tiene ninguna mascota registrada. Diselo exactamente asi; "
+        "NUNCA inventes ni menciones mascotas que no esten en esta lista.",
+    )
 
 
 def get_pet(pet_id: int) -> dict:
@@ -259,9 +276,13 @@ def list_appointments(limit: int = 100, page: int = 1) -> dict:
     Llama a GET /api/appointments/user (el backend filtra por el JWT, asi
     que solo devuelve las citas del usuario que conversa).
     """
-    return get_client().get(
-        "/api/appointments/user",
-        params={"limit": int(limit), "page": int(page)},
+    return _explicit_if_empty(
+        get_client().get(
+            "/api/appointments/user",
+            params={"limit": int(limit), "page": int(page)},
+        ),
+        "El usuario NO tiene ninguna cita agendada. Diselo exactamente asi; "
+        "NUNCA inventes citas, fechas ni clinicas que no esten en esta lista.",
     )
 
 

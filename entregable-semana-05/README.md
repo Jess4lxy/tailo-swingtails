@@ -241,6 +241,16 @@ interaccion: `id`, `session_id`, `timestamp`, `user_prompt`, `system_response`,
 `ttft_ms`, `total_latency_ms`, `tokens_per_second`, `was_blocked` y
 `tools_executed` (JSON `[{name, parameters, status: SUCCESS|ERROR}]`).
 
+**Endpoints para el frontend (vista "Bitacora de Auditoria"):**
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| GET | `/observability?limit=N` | Ultimos N registros (mas reciente primero). `was_blocked` como bool y `tools_executed` ya parseado. |
+| GET | `/observability?session_id=<id>` | Registros de UNA conversacion (los datos por sesion). |
+| GET | `/observability/stats` | Agregados: total, % bloqueadas, TTFT/latencia/tps promedio. |
+
+Requieren `Authorization: Bearer <jwt>` (y el header `ngrok-skip-browser-warning: true` si se accede via ngrok).
+
 ## Lista de funciones (15)
 
 Lectura:

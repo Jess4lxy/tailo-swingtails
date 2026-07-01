@@ -271,6 +271,51 @@
           ]
         }
       ]
+    },
+    {
+      "name": "6 · Observabilidad (Bitacora de Auditoria)",
+      "item": [
+        {
+          "name": "Logs recientes",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "ngrok-skip-browser-warning", "value": "true" }],
+            "url": {
+              "raw": "{{baseUrl}}/observability?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["observability"],
+              "query": [{ "key": "limit", "value": "20" }]
+            },
+            "description": "Ultimos N registros de auditoria (mas reciente primero) con ttft_ms, total_latency_ms, tokens_per_second, was_blocked y tools_executed (ya parseado). Alimenta la vista 'Ver Bitacora de Auditoria' del front."
+          }
+        },
+        {
+          "name": "Logs por sesion",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "ngrok-skip-browser-warning", "value": "true" }],
+            "url": {
+              "raw": "{{baseUrl}}/observability?session_id={{conversationId}}&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["observability"],
+              "query": [
+                { "key": "session_id", "value": "{{conversationId}}" },
+                { "key": "limit", "value": "50" }
+              ]
+            },
+            "description": "Registros de auditoria de UNA conversacion (session_id = conversation_id). Usa el conversationId que guardo el chat."
+          }
+        },
+        {
+          "name": "Estadisticas agregadas",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "ngrok-skip-browser-warning", "value": "true" }],
+            "url": { "raw": "{{baseUrl}}/observability/stats", "host": ["{{baseUrl}}"], "path": ["observability", "stats"] },
+            "description": "Totales para el informe: cuantas interacciones, % bloqueadas por el guardrail, y promedios de TTFT, latencia total y tokens/segundo."
+          }
+        }
+      ]
     }
   ]
 }
