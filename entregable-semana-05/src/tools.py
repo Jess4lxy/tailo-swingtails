@@ -94,12 +94,22 @@ def get_pet(pet_id: int) -> dict:
     return pets
 
 
+# Valores cerrados que exige la API para una mascota. Se usan como red de
+# seguridad DETERMINISTICA: si el modelo no manda un valor valido y explicito
+# (o lo deja vacio), register_pet NO llama a la API: devuelve
+# 'preguntar_al_usuario' para que el asistente pida el dato real en vez de
+# inventarlo. Es el mismo patron de book_appointment (nombres -> preguntar).
+VALID_SEX = {"Macho", "Hembra"}
+VALID_AGE = {"Cachorro", "Joven", "Adulto", "Senior"}
+VALID_HEIGHT = {"<30", "30-40", "41-50", "51-60", ">60"}
+
+
 def register_pet(
-    name: str,
-    specie: str,
-    sex: str,
-    age: str,
-    height: str,
+    name: str = "",
+    specie: str = "",
+    sex: str = "",
+    age: str = "",
+    height: str = "",
     breed: str | None = None,
     weight: float | None = None,
 ) -> dict:
@@ -110,17 +120,42 @@ def register_pet(
         specie: Especie (perro, gato, ...). OBLIGATORIO en la API real.
         sex: 'Macho' o 'Hembra' (enum estricto del API).
         age: 'Cachorro', 'Joven', 'Adulto' o 'Senior'.
-        height: '<30', '30-40', '41-50', '51-60' o '>60' (cm).
+        height: '<30', '30-40', '41-50', '51-60' o '>60' (cm). Debe venir del
+            usuario; NO se deduce de la raza/peso/edad. Si el usuario no la dijo,
+            deja este campo como cadena vacia "".
         breed: Raza. Opcional.
         weight: Peso en kg. Opcional.
 
     Llama a POST /api/pets. El propietario (user_id) se toma de la sesion
-    autenticada, NO se pide al usuario. Si falta algun campo obligatorio,
-    el LLM debe pedirselo en vez de inventarlo.
+    autenticada, NO se pide al usuario. Si falta algun campo obligatorio (o el
+    valor no es uno de los validos), NO se llama a la API: se devuelve
+    'preguntar_al_usuario' para que el asistente lo pida (no lo invente).
     """
     uid = _current_user_id()
     if uid is None:
         return dict(_NO_SESSION_ERROR)
+
+    # Red de seguridad: valida los obligatorios ANTES de tocar la API. Asi, si
+    # el modelo alucino un valor invalido o dejo algo vacio, se le pide al
+    # usuario en vez de registrar datos inventados.
+    faltan: list[str] = []
+    if not (name or "").strip():
+        faltan.append("el nombre")
+    if not (specie or "").strip():
+        faltan.append("la especie (perro, gato, ...)")
+    if sex not in VALID_SEX:
+        faltan.append("el sexo (Macho o Hembra)")
+    if age not in VALID_AGE:
+        faltan.append("la edad (Cachorro, Joven, Adulto o Senior)")
+    if height not in VALID_HEIGHT:
+        faltan.append("la altura en cm (<30, 30-40, 41-50, 51-60 o >60)")
+    if faltan:
+        return {"preguntar_al_usuario":
+                f"Antes de registrar a {name or 'la mascota'} necesito que el "
+                f"usuario indique: {', '.join(faltan)}. Preguntaselo ofreciendo "
+                f"las opciones; NO inventes estos valores (la altura NO se "
+                f"deduce de la raza, el peso ni la edad)."}
+
     body: dict[str, Any] = {
         "name": name,
         "specie": specie,
@@ -476,26 +511,19 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "register_pet",
-            "description": "Registra una nueva mascota para el usuario autenticado (el propietario se infiere de la sesion).",
+            "description": "Registra una nueva mascota. El propietario se infiere de la sesion. Pasa SOLO los datos que el usuario dijo explicitamente; para un obligatorio que el usuario no menciono, pasa cadena vacia \"\" (la funcion te dira que preguntar). NO inventes valores.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
-                    "specie": {"type": "string", "description": "perro, gato, etc."},
-                    "sex": {"type": "string", "enum": ["Macho", "Hembra"]},
-                    "age": {
-                        "type": "string",
-                        "enum": ["Cachorro", "Joven", "Adulto", "Senior"],
-                    },
-                    "height": {
-                        "type": "string",
-                        "enum": ["<30", "30-40", "41-50", "51-60", ">60"],
-                        "description": "Rango de altura en cm.",
-                    },
-                    "breed": {"type": "string"},
-                    "weight": {"type": "number", "description": "Peso en kg."},
+                    "name": {"type": "string", "description": "Nombre de la mascota."},
+                    "specie": {"type": "string", "description": "Especie: perro, gato, etc."},
+                    "sex": {"type": "string", "description": "'Macho' o 'Hembra'. Si el usuario no lo dijo, pasa cadena vacia \"\"."},
+                    "age": {"type": "string", "description": "'Cachorro', 'Joven', 'Adulto' o 'Senior'. Si el usuario no lo dijo, pasa \"\"."},
+                    "height": {"type": "string", "description": "Altura en cm: '<30', '30-40', '41-50', '51-60' o '>60'. Es una medida fisica que SOLO da el usuario; NUNCA la deduzcas de la raza, el peso ni la edad. Si el usuario no la dijo, pasa cadena vacia \"\"."},
+                    "breed": {"type": "string", "description": "Raza (opcional)."},
+                    "weight": {"type": "number", "description": "Peso en kg (opcional)."},
                 },
-                "required": ["name", "specie", "sex", "age", "height"],
+                "required": ["name", "specie"],
             },
         },
     },

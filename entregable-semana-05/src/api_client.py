@@ -217,7 +217,20 @@ class SwingTailsClient:
                     auth=auth, _retried=True,
                 )
 
-        # Error HTTP: empaquetamos en dict para que el LLM lo vea como tool result.
+        # Error del SERVIDOR (5xx): la API existe pero fallo (p.ej. su BD en
+        # Render caida). Damos un mensaje claro y accionable para que el modelo
+        # NO lo confunda con un problema de la conexion del usuario.
+        if resp.status_code >= 500:
+            return {
+                "error": (
+                    "El servicio de SwingTails no esta disponible temporalmente "
+                    "(error del servidor de la API). Dile al usuario que lo "
+                    "intente mas tarde; NO es un problema de su conexion a internet."
+                ),
+                "http_status": resp.status_code,
+            }
+
+        # Otros errores HTTP (4xx): empaquetamos para que el LLM lo vea.
         return {
             "error": f"HTTP {resp.status_code}",
             "detalle": body if isinstance(body, (dict, list)) else str(body)[:300],
