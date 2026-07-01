@@ -303,6 +303,13 @@ body {
   transition: var(--transition-normal);
 }
 
+/* Controles del drawer: ocultos en desktop, se activan en <=768px */
+.btn-hamburger,
+.btn-close-sidebar,
+.sidebar-overlay {
+  display: none;
+}
+
 .sidebar-header {
   padding: 24px;
   border-bottom: 1px solid var(--border-glass);
@@ -488,6 +495,7 @@ body {
 /* Chat container styling */
 .chat-window {
   flex: 1;
+  min-width: 0; /* evita que el contenido flex fuerce scroll horizontal */
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -1028,16 +1036,86 @@ body {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
+  /* --- Sidebar como drawer off-canvas (fuera del flujo: no empuja nada) --- */
   .sidebar {
-    width: 60px;
-    padding: 12px 6px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 84%;
+    max-width: 320px;
+    padding: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 28px rgba(0, 0, 0, 0.28);
   }
-  .sidebar-header, .sidebar-footer, .conversation-info {
-    display: none;
+  .sidebar.open {
+    transform: translateX(0);
   }
-  .conversation-item {
+
+  /* Backdrop oscuro detras del drawer abierto */
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 40;
+    animation: fadeInUp 0.2s ease-out;
+  }
+
+  /* Boton hamburguesa (header) y boton cerrar (dentro del drawer) */
+  .btn-hamburger {
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    padding: 8px;
+    background: transparent;
+    border: none;
+    color: var(--custom-brown, var(--text-primary));
+    cursor: pointer;
+    padding: 6px;
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+  .btn-close-sidebar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    flex-shrink: 0;
+  }
+
+  /* El main ocupa TODO el ancho: nada empuja el contenido a la derecha */
+  .chat-header {
+    padding: 0 12px;
+    gap: 6px;
+  }
+  .chat-header-actions {
+    flex-shrink: 0;
+  }
+  .messages-container {
+    padding: 16px 14px;
+  }
+  .chat-input-area {
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+  .welcome-screen {
+    padding: 24px 16px;
+  }
+  .welcome-suggestions {
+    grid-template-columns: 1fr;
+  }
+
+  /* Auditoria */
+  .audit-panel {
+    padding: 16px 14px;
+  }
+  .audit-header {
+    align-items: flex-start;
+    gap: 8px;
   }
   .audit-stats-grid {
     grid-template-columns: repeat(2, 1fr);

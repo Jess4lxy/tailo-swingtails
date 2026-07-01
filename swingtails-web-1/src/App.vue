@@ -56,16 +56,25 @@
 
     <!-- Main Workspace Application -->
     <template v-else>
+      <!-- Backdrop del drawer en movil -->
+      <div v-if="sidebarOpen" class="sidebar-overlay" @click="sidebarOpen = false"></div>
+
       <!-- Sidebar (Conversations History) -->
-      <aside class="sidebar">
+      <aside :class="['sidebar', { open: sidebarOpen }]">
         <div class="sidebar-header">
           <div class="logo-container">
             <img src="./assets/Logos/Mobile Logo/Swingtails Full V3 DEFINITIVO.png" alt="SwingTails Icon" style="width: 28px; height: 28px; object-fit: contain; border-radius: 6px;" />
             <h2 style="background: none; -webkit-text-fill-color: var(--custom-brown); color: var(--custom-brown);">SwingTails</h2>
           </div>
-          <button class="btn-new-chat" @click="startNewConversation">
-            <Plus :size="16" /> Nueva
-          </button>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="btn-new-chat" @click="startNewConversation">
+              <Plus :size="16" /> Nueva
+            </button>
+            <!-- Cerrar drawer (solo visible en movil) -->
+            <button class="btn-close-sidebar" @click="sidebarOpen = false" title="Cerrar menú">
+              <X :size="18" />
+            </button>
+          </div>
         </div>
 
         <!-- Conversations History Scroll -->
@@ -122,6 +131,9 @@
           
           <!-- Chat Header -->
           <header class="chat-header">
+            <button class="btn-hamburger" @click="sidebarOpen = true" title="Abrir menú de chats">
+              <Menu :size="22" />
+            </button>
             <div class="chat-header-info">
               <span class="chat-header-title">{{ chatTitle }}</span>
               <span class="chat-header-subtitle">
@@ -318,6 +330,9 @@
         <section v-else class="audit-panel">
           
           <div class="audit-header">
+            <button class="btn-hamburger" @click="sidebarOpen = true" title="Abrir menú de chats">
+              <Menu :size="22" />
+            </button>
             <div>
               <h2>Bitácora de Observabilidad en Acción</h2>
               <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 4px;">
@@ -449,9 +464,11 @@ import {
   Mic, 
   MicOff, 
   Send, 
-  ShieldAlert, 
-  Terminal, 
-  RefreshCw 
+  ShieldAlert,
+  Terminal,
+  RefreshCw,
+  Menu,
+  X
 } from '@lucide/vue';
 
 export default {
@@ -469,7 +486,9 @@ export default {
     Send,
     ShieldAlert,
     Terminal,
-    RefreshCw
+    RefreshCw,
+    Menu,
+    X
   },
   data() {
     return {
@@ -488,6 +507,7 @@ export default {
 
       // Tabs & Sidebar
       activeTab: 'chat', // 'chat' | 'audit'
+      sidebarOpen: false, // drawer off-canvas en movil (hamburguesa)
       conversations: [],
       activeConversationId: localStorage.getItem('swingtails_active_conv') || null,
       
@@ -689,6 +709,7 @@ export default {
       }
     },
     async loadConversation(conversationId) {
+      this.sidebarOpen = false; // cerrar drawer en movil al elegir chat
       this.activeConversationId = conversationId;
       localStorage.setItem('swingtails_active_conv', conversationId);
       this.messages = [];
@@ -722,6 +743,7 @@ export default {
       }
     },
     startNewConversation() {
+      this.sidebarOpen = false; // cerrar drawer en movil
       this.activeConversationId = null;
       localStorage.removeItem('swingtails_active_conv');
       this.messages = [];
