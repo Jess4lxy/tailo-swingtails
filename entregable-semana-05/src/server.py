@@ -29,7 +29,7 @@ Endpoints:
     GET    /conversations              lista las conversaciones del usuario
     GET    /conversations/{id}         devuelve el historial completo
     DELETE /conversations/{id}         borra una conversacion
-    GET    /observability              bitacora de auditoria (?session_id, ?limit)
+    GET    /observability/logs         bitacora de auditoria (?session_id, ?limit)
     GET    /observability/stats        agregados (TTFT/latencia/tps, % bloqueos)
 """
 from __future__ import annotations
@@ -56,6 +56,7 @@ from config import (
     LLM_MODEL,
     OLLAMA_HOST,
     TOP_K,
+    WEB_DIST,
     WHISPER_COMPUTE,
     WHISPER_DEVICE,
     WHISPER_LANGUAGE,
@@ -702,7 +703,7 @@ def _obs_row(row: dict) -> dict:
     }
 
 
-@app.get("/observability")
+@app.get("/observability/logs")
 def observability_logs(
     session_id: str | None = None,
     limit: int = 50,
@@ -735,6 +736,23 @@ def observability_stats(authorization: str | None = Header(default=None)) -> dic
         "avg_latency_ms": round(s["avg_latency_ms"], 2) if s.get("avg_latency_ms") else None,
         "avg_tokens_per_second": round(s["avg_tps"], 2) if s.get("avg_tps") else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Frontend estatico (opcional): un SOLO tunel de ngrok publica la pagina Y la
+# API en el mismo origen. Se monta AL FINAL, despues de todas las rutas de la
+# API, para que "/chat", "/observability/logs", etc. tengan prioridad; el mount
+# de "/" solo atiende lo que ninguna ruta de la API capturo (index.html, JS,
+# CSS, assets). html=True sirve index.html en "/" y hace fallback de SPA.
+# Solo se activa si el build existe (ver TAILO_WEB_DIST en config.py).
+_web_dist = Path(WEB_DIST)
+if _web_dist.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=str(_web_dist), html=True), name="web")
+    print(f"[web] Sirviendo frontend estatico desde: {_web_dist}")
+else:
+    print(f"[web] Sin frontend estatico (no existe {_web_dist}); solo API.")
 
 
 if __name__ == "__main__":

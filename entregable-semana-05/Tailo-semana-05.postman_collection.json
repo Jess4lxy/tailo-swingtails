@@ -281,9 +281,9 @@
             "method": "GET",
             "header": [{ "key": "ngrok-skip-browser-warning", "value": "true" }],
             "url": {
-              "raw": "{{baseUrl}}/observability?limit=20",
+              "raw": "{{baseUrl}}/observability/logs?limit=20",
               "host": ["{{baseUrl}}"],
-              "path": ["observability"],
+              "path": ["observability", "logs"],
               "query": [{ "key": "limit", "value": "20" }]
             },
             "description": "Ultimos N registros de auditoria (mas reciente primero) con ttft_ms, total_latency_ms, tokens_per_second, was_blocked y tools_executed (ya parseado). Alimenta la vista 'Ver Bitacora de Auditoria' del front."
@@ -295,9 +295,9 @@
             "method": "GET",
             "header": [{ "key": "ngrok-skip-browser-warning", "value": "true" }],
             "url": {
-              "raw": "{{baseUrl}}/observability?session_id={{conversationId}}&limit=50",
+              "raw": "{{baseUrl}}/observability/logs?session_id={{conversationId}}&limit=50",
               "host": ["{{baseUrl}}"],
-              "path": ["observability"],
+              "path": ["observability", "logs"],
               "query": [
                 { "key": "session_id", "value": "{{conversationId}}" },
                 { "key": "limit", "value": "50" }

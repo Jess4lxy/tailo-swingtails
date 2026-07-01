@@ -245,8 +245,8 @@ interaccion: `id`, `session_id`, `timestamp`, `user_prompt`, `system_response`,
 
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| GET | `/observability?limit=N` | Ultimos N registros (mas reciente primero). `was_blocked` como bool y `tools_executed` ya parseado. |
-| GET | `/observability?session_id=<id>` | Registros de UNA conversacion (los datos por sesion). |
+| GET | `/observability/logs?limit=N` | Ultimos N registros (mas reciente primero). `was_blocked` como bool y `tools_executed` ya parseado. |
+| GET | `/observability/logs?session_id=<id>` | Registros de UNA conversacion (los datos por sesion). |
 | GET | `/observability/stats` | Agregados: total, % bloqueadas, TTFT/latencia/tps promedio. |
 
 Requieren `Authorization: Bearer <jwt>` (y el header `ngrok-skip-browser-warning: true` si se accede via ngrok).

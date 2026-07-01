@@ -81,6 +81,16 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
+# ---------------------------------------------------------------------------
+# Frontend estatico servido por el MISMO backend (opcional)
+# ---------------------------------------------------------------------------
+# Si esta carpeta existe (el build de Vite del front), el backend la sirve en
+# "/" -> asi un solo tunel de ngrok publica la pagina Y la API (mismo origen).
+# Por defecto apunta al build de swingtails-web-1 (hermano del entregable).
+WEB_DIST = os.getenv(
+    "TAILO_WEB_DIST", str(ROOT.parent / "swingtails-web-1" / "dist")
+)
+
 # --- Gestion de la ventana de contexto (Context Window Management) ----------
 # El Modelfile fija `num_ctx 16384` para tailo-agent. De ese presupuesto hay
 # que descontar lo que NO es historial conversacional y se envia en cada turno:
