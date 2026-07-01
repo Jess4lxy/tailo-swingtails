@@ -1,0 +1,1142 @@
+<template>
+  <div class="app-container">
+    <!-- Login Screen Overlay -->
+    <div v-if="!isLoggedIn" class="login-overlay">
+      <div class="login-card">
+        <div class="login-logo">
+          <img src="./assets/Logos/Mobile Logo/Swingtails Full V3 DEFINITIVO.png" alt="SwingTails Logo" style="width: 80px; height: 80px; margin-bottom: 12px; object-fit: contain;" />
+          <h1>SwingTails AI</h1>
+          <p>Asistente Veterinario Inteligente Local</p>
+        </div>
+
+        <form @submit.prevent="handleLogin">
+          <div class="form-group">
+            <label>Correo Electrónico (SwingTails)</label>
+            <input 
+              v-model="email" 
+              type="email" 
+              class="form-input" 
+              placeholder="ejemplo@swingtails.com" 
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label>Contraseña</label>
+            <input 
+              v-model="password" 
+              type="password" 
+              class="form-input" 
+              placeholder="••••••••" 
+              required
+            />
+          </div>
+
+          <div v-if="loginError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
+            {{ loginError }}
+          </div>
+
+          <button type="submit" class="btn-primary" :disabled="loginLoading">
+            <template v-if="loginLoading">
+              <svg class="spinner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                <path d="M4 12a8 8 0 0 1 8-8V4C5.37 4 0 9.37 0 16h4z" fill="currentColor"></path>
+              </svg>
+              Iniciando Sesión...
+            </template>
+            <template v-else>
+              Conectarse al Agente
+            </template>
+          </button>
+        </form>
+
+
+      </div>
+    </div>
+
+    <!-- Main Workspace Application -->
+    <template v-else>
+      <!-- Sidebar (Conversations History) -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo-container">
+            <img src="./assets/Logos/Mobile Logo/Swingtails Full V3 DEFINITIVO.png" alt="SwingTails Icon" style="width: 28px; height: 28px; object-fit: contain; border-radius: 6px;" />
+            <h2 style="background: none; -webkit-text-fill-color: var(--custom-brown); color: var(--custom-brown);">SwingTails</h2>
+          </div>
+          <button class="btn-new-chat" @click="startNewConversation">
+            <Plus :size="16" /> Nueva
+          </button>
+        </div>
+
+        <!-- Conversations History Scroll -->
+        <div class="conversations-list">
+          <div 
+            v-for="conv in conversations" 
+            :key="conv.conversation_id"
+            :class="['conversation-item', { active: activeConversationId === conv.conversation_id }]"
+            @click="loadConversation(conv.conversation_id)"
+          >
+            <div class="conversation-info">
+              <span class="conversation-title">{{ conv.title || 'Nueva conversación' }}</span>
+              <div class="conversation-meta">
+                <span>{{ conv.n_messages }} mensajes</span>
+                <span>{{ formatDate(conv.updated_at) }}</span>
+              </div>
+            </div>
+            <button class="btn-delete-conv" @click.stop="deleteConversation(conv.conversation_id)">
+              <Trash2 :size="14" />
+            </button>
+          </div>
+          <div v-if="conversations.length === 0" style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 20px 0;">
+            No hay chats guardados
+          </div>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+          <button class="sidebar-nav-btn" @click="activeTab = activeTab === 'chat' ? 'audit' : 'chat'">
+            <Activity :size="16" />
+            <span>{{ activeTab === 'chat' ? 'Ver Bitácora de Auditoría' : 'Volver al Chat' }}</span>
+          </button>
+
+          <div class="user-profile">
+            <div class="user-avatar" :style="currentUser?.imageUrl ? `background-image: url(${currentUser.imageUrl}); background-size: cover; text-indent: -9999px;` : ''">
+              {{ userNameLetter }}
+            </div>
+            <div class="user-info">
+              <span class="user-name" style="font-weight: 600; font-size: 0.9rem; color: var(--text-primary); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">{{ currentUser?.name || `Usuario ID #${currentUserId}` }}</span>
+              <span class="user-id-tag" style="font-size: 0.75rem; color: var(--text-muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px;">{{ currentUser?.email || 'Sesión Activa' }}</span>
+            </div>
+            <button class="btn-delete-conv" style="opacity: 1;" @click="handleLogout" title="Cerrar sesión">
+              <LogOut :size="16" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right Panel Container (Chat Window or Audit Panel) -->
+      <main style="flex: 1; height: 100vh; display: flex; flex-direction: column;">
+        
+        <!-- Tab 1: Chatbot View -->
+        <section v-if="activeTab === 'chat'" class="chat-window">
+          
+          <!-- Chat Header -->
+          <header class="chat-header">
+            <div class="chat-header-info">
+              <span class="chat-header-title">{{ chatTitle }}</span>
+              <span class="chat-header-subtitle">
+                <div class="status-dot"></div>
+                Conectado a IA local (Whisper + Llama)
+              </span>
+            </div>
+            <div class="chat-header-actions">
+              <button class="btn-header" @click="clearActiveChatMessages" :disabled="messages.length === 0">
+                Limpiar pantalla
+              </button>
+              <button 
+                class="btn-header" 
+                :class="{ active: transcriptionMethod === 'whisper' }"
+                @click="transcriptionMethod = 'whisper'"
+                title="Whisper en Backend local"
+              >
+                Whisper
+              </button>
+            </div>
+          </header>
+
+          <!-- Agent Loading State / Dynamic Banner -->
+          <div 
+            v-if="isAgentLoading && agentPhase" 
+            :class="['agent-status-overlay', agentPhase.phase]"
+          >
+            <div class="agent-loader"></div>
+            <span>{{ agentPhase.detail || 'Procesando...' }}</span>
+            <span v-if="agentPhase.tool" style="font-family: monospace; font-size: 0.75rem; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px;">
+              {{ agentPhase.tool }}()
+            </span>
+          </div>
+
+          <!-- Messages Container -->
+          <div class="messages-container" ref="messagesBox">
+            <div v-if="messages.length === 0" class="welcome-screen">
+              <img src="./assets/Logos/Mobile Logo/Swingtails Full V3 DEFINITIVO.png" alt="Tailo Logo" style="width: 80px; height: 80px; margin-bottom: 16px; object-fit: contain; border-radius: 16px;" />
+              <h3>¡Hola! Soy Tailo</h3>
+              <p>Tu asistente veterinario local de SwingTails. Puedo ayudarte a consultar y registrar mascotas, buscar veterinarias y agendar citas en tiempo real.</p>
+              
+              <div class="welcome-suggestions">
+                <div class="suggestion-card" @click="applySuggestion('¿Cuáles son mis mascotas registradas?')">
+                  <h4>Mascotas</h4>
+                  <p>¿Cuáles son mis mascotas registradas?</p>
+                </div>
+                <div class="suggestion-card" @click="applySuggestion('Busca clínicas veterinarias disponibles')">
+                  <h4>Clínicas</h4>
+                  <p>Busca clínicas veterinarias disponibles</p>
+                </div>
+                <div class="suggestion-card" @click="applySuggestion('Quiero agendar una cita veterinaria')">
+                  <h4>Agendar</h4>
+                  <p>Quiero agendar una cita veterinaria</p>
+                </div>
+                <div class="suggestion-card" @click="applySuggestion('¿Qué alimentos tienes en catálogo?')">
+                  <h4>Catálogo</h4>
+                  <p>¿Qué alimentos tienes en catálogo?</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Messages Log -->
+            <div 
+              v-for="(msg, idx) in messages" 
+              :key="idx" 
+              :class="['message-row', msg.role]"
+            >
+              <div :class="['message-bubble', { blocked: msg.blocked }]">
+                
+                <!-- If blocked by Guardrails -->
+                <div v-if="msg.blocked" class="guardrail-alert">
+                  <ShieldAlert style="color: var(--danger-color); flex-shrink: 0;" :size="20" />
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                      <span class="guardrail-badge">Guardrail</span>
+                      <strong style="color: white; font-size: 0.85rem;">Intento de inyección bloqueado</strong>
+                    </div>
+                    <p style="margin: 0; font-size: 0.9rem;">{{ msg.content }}</p>
+                  </div>
+                </div>
+
+                <!-- Standard text markdown rendering -->
+                <div v-else style="white-space: pre-wrap; word-break: break-word;">{{ msg.content }}</div>
+
+                <!-- Observability Metrics (shown on completed bot responses) -->
+                <div v-if="msg.role === 'assistant' && msg.metrics && !msg.blocked" class="message-metrics">
+                  <div class="metric-item" title="Tiempo hasta el primer token emitido">
+                    <Clock :size="12" />
+                    <span>TTFT:</span>
+                    <span class="metric-val">{{ msg.metrics.ttft_ms ? `${msg.metrics.ttft_ms} ms` : 'N/A' }}</span>
+                  </div>
+                  <div class="metric-item" title="Latencia total del ciclo de inferencia">
+                    <Zap :size="12" />
+                    <span>Latencia:</span>
+                    <span class="metric-val">{{ msg.metrics.total_latency_ms ? `${(msg.metrics.total_latency_ms / 1000).toFixed(2)}s` : 'N/A' }}</span>
+                  </div>
+                  <div class="metric-item" title="Velocidad de generación activa (tokens por segundo)">
+                    <Cpu :size="12" />
+                    <span>TPS:</span>
+                    <span class="metric-val">{{ msg.metrics.tokens_per_second ? `${msg.metrics.tokens_per_second.toFixed(1)} t/s` : 'N/A' }}</span>
+                  </div>
+                  <div v-if="msg.metrics.compacted" class="metric-item" style="color: var(--text-secondary);" title="La ventana de contexto superó el límite y fue compactada">
+                    <span>Contexto Compactado</span>
+                  </div>
+
+                  <!-- Tools executed visual log -->
+                  <div v-if="msg.metrics.tools_executed && msg.metrics.tools_executed.length > 0" style="display: flex; gap: 6px; flex-wrap: wrap; width: 100%; margin-top: 4px;">
+                    <div 
+                      v-for="(t, tIdx) in msg.metrics.tools_executed" 
+                      :key="tIdx"
+                      :class="['tool-execution-badge', { error: t.status === 'ERROR' }]"
+                      :title="`Parámetros: ${JSON.stringify(t.parameters)}`"
+                    >
+                      <Terminal :size="10" />
+                      {{ t.name }} ({{ t.status }})
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Streaming Skeleton / Loading Placeholder -->
+            <div v-if="isAgentLoading && messages.length > 0 && messages[messages.length - 1].role === 'user'" class="message-row assistant">
+              <div class="message-bubble" style="width: 140px; display: flex; flex-direction: column; gap: 8px;">
+                <div class="skeleton" style="height: 14px; width: 100%;"></div>
+                <div class="skeleton" style="height: 14px; width: 60%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Input Area -->
+          <footer class="chat-input-area">
+            <div class="chat-input-wrapper">
+              <button 
+                :class="['btn-voice', { recording: isRecording }]" 
+                @click="toggleVoiceRecord"
+                :title="isRecording ? 'Detener grabación' : 'Grabar mensaje por voz'"
+                :disabled="isAgentLoading"
+              >
+                <Mic v-if="!isRecording" :size="20" />
+                <MicOff v-else :size="20" />
+              </button>
+
+              <input 
+                v-model="inputMessage" 
+                type="text" 
+                class="text-input" 
+                placeholder="Escribe un mensaje..."
+                @keyup.enter="sendMessage"
+                :disabled="isAgentLoading"
+                ref="inputBox"
+              />
+
+              <button 
+                class="btn-send" 
+                @click="sendMessage" 
+                :disabled="!inputMessage.trim() || isAgentLoading"
+              >
+                <Send :size="18" />
+              </button>
+            </div>
+
+            <div class="voice-source-bar">
+              <span v-if="isRecording" style="color: var(--danger-color); display: flex; align-items: center; gap: 6px; font-weight: 500;">
+                <span class="status-dot" style="background-color: var(--danger-color); box-shadow: 0 0 6px var(--danger-color);"></span>
+                Grabando audio... Habla ahora.
+              </span>
+              <span v-else-if="voiceStatus" style="color: var(--text-secondary); font-weight: 500;">
+                {{ voiceStatus }}
+              </span>
+              <span v-else></span>
+
+              <div class="toggle-switch" @click="transcriptionMethod = transcriptionMethod === 'webspeech' ? 'whisper' : 'webspeech'">
+                <span>Transcribir con: <strong>{{ transcriptionMethod === 'webspeech' ? 'Web Speech API' : 'Whisper (Local)' }}</strong></span>
+              </div>
+            </div>
+          </footer>
+
+        </section>
+
+        <!-- Tab 2: Observability Audit Dashboard View -->
+        <section v-else class="audit-panel">
+          
+          <div class="audit-header">
+            <div>
+              <h2>Bitácora de Observabilidad en Acción</h2>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 4px;">
+                Métricas de rendimiento e instrumentación guardadas en la base de datos local SQLite (auditoría en tiempo real).
+              </p>
+            </div>
+            <button class="btn-header" @click="loadAuditData" :disabled="loadingAudit">
+              <RefreshCw :class="{ 'spinner-icon': loadingAudit }" :size="16" />
+              Actualizar
+            </button>
+          </div>
+
+          <!-- Diagnostic Warning Banner if endpoints missing -->
+          <div v-if="auditError" style="background: rgba(231, 76, 60, 0.08); border: 1px dashed var(--danger-color); border-radius: 12px; padding: 16px; margin-bottom: 24px; color: #ff9999; font-size: 0.9rem; line-height: 1.5; animation: fadeInUp 0.3s ease-out;">
+            <div style="font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--danger-color);"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              No se pudo conectar con los endpoints de observabilidad
+            </div>
+            <div style="margin-bottom: 8px;">{{ auditError }}</div>
+            <div>
+              <em>Tip: Asegúrate de reiniciar tu servidor FastAPI local en la PC remota donde corre la IA, utilizando el archivo <code>server.py</code> actualizado que acabamos de modificar en <code>entregable-semana-05/src/server.py</code>. Esto registrará los endpoints <code>GET /observability/logs</code> y <code>/stats</code> necesarios.</em>
+            </div>
+          </div>
+
+          <!-- Stats Cards Grid -->
+          <div class="audit-stats-grid">
+            <div class="stat-card">
+              <span class="stat-card-title">Interacciones Totales</span>
+              <span class="stat-card-value">{{ auditStats.total || 0 }}</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-card-title">Promedio TTFT</span>
+              <span class="stat-card-value">{{ auditStats.avg_ttft_ms ? `${auditStats.avg_ttft_ms.toFixed(1)} ms` : 'N/A' }}</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-card-title">Promedio Latencia</span>
+              <span class="stat-card-value">{{ auditStats.avg_latency_ms ? `${(auditStats.avg_latency_ms / 1000).toFixed(2)} s` : 'N/A' }}</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-card-title">Inyecciones Bloqueadas</span>
+              <span class="stat-card-value" style="color: var(--danger-color)">
+                {{ auditStats.blocked || 0 }} 
+                <span style="font-size: 0.9rem; font-weight: 500; color: var(--text-muted)">
+                  ({{ auditStats.total ? ((auditStats.blocked / auditStats.total) * 100).toFixed(1) : 0 }}%)
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Audit Logs Table -->
+          <div class="audit-table-wrapper">
+            <div v-if="loadingAudit" style="padding: 40px; text-align: center; color: var(--text-muted)">
+              <svg class="spinner-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="margin-bottom: 12px;">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                <path d="M4 12a8 8 0 0 1 8-8V4C5.37 4 0 9.37 0 16h4z" fill="currentColor"></path>
+              </svg>
+              <p>Consultando base de datos de observabilidad SQLite...</p>
+            </div>
+
+            <table v-else class="audit-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Fecha / Hora (UTC)</th>
+                  <th>Input Usuario</th>
+                  <th>TTFT</th>
+                  <th>Latencia</th>
+                  <th>TPS</th>
+                  <th>Guardrail</th>
+                  <th>Herramientas Invocadas</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="log in auditLogs" :key="log.id">
+                  <td>{{ log.id }}</td>
+                  <td style="white-space: nowrap;">{{ formatDateTime(log.timestamp) }}</td>
+                  <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="log.user_prompt">
+                    {{ log.user_prompt }}
+                  </td>
+                  <td>{{ log.ttft_ms ? `${log.ttft_ms} ms` : 'N/A' }}</td>
+                  <td>{{ log.total_latency_ms ? `${(log.total_latency_ms / 1000).toFixed(2)}s` : 'N/A' }}</td>
+                  <td>{{ log.tokens_per_second ? `${log.tokens_per_second} t/s` : 'N/A' }}</td>
+                  <td>
+                    <span :class="log.was_blocked ? 'badge-blocked-yes' : 'badge-blocked-no'">
+                      {{ log.was_blocked ? 'BLOQUEADO' : 'PASÓ' }}
+                    </span>
+                  </td>
+                  <td style="max-width: 250px;">
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                      <span 
+                        v-for="(t, tIdx) in parseTools(log.tools_executed)" 
+                        :key="tIdx" 
+                        :class="['tool-execution-badge', { error: t.status === 'ERROR' }]"
+                        :title="`Parámetros: ${JSON.stringify(t.parameters)}`"
+                      >
+                        {{ t.name }}
+                      </span>
+                      <span v-if="parseTools(log.tools_executed).length === 0" style="color: var(--text-muted); font-size: 0.75rem;">
+                        Ninguna
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="auditLogs.length === 0">
+                  <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                    La bitácora de observabilidad está vacía
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </section>
+
+      </main>
+    </template>
+  </div>
+</template>
+
+<script>
+import { 
+  Plus, 
+  Trash2, 
+  Activity, 
+  LogOut, 
+  Clock, 
+  Zap, 
+  Cpu, 
+  Mic, 
+  MicOff, 
+  Send, 
+  ShieldAlert, 
+  Terminal, 
+  RefreshCw 
+} from '@lucide/vue';
+
+export default {
+  name: 'App',
+  components: {
+    Plus,
+    Trash2,
+    Activity,
+    LogOut,
+    Clock,
+    Zap,
+    Cpu,
+    Mic,
+    MicOff,
+    Send,
+    ShieldAlert,
+    Terminal,
+    RefreshCw
+  },
+  data() {
+    return {
+      // Configuration
+      backendUrl: localStorage.getItem('swingtails_backend_url') || 'https://nomenclatorial-gilly-contessa.ngrok-free.dev',
+
+      email: '',
+      password: '',
+      jwt: localStorage.getItem('swingtails_jwt') || '',
+      manualJwt: '',
+      currentUserId: null,
+      currentUser: null,
+      isLoggedIn: false,
+      loginLoading: false,
+      loginError: '',
+
+      // Tabs & Sidebar
+      activeTab: 'chat', // 'chat' | 'audit'
+      conversations: [],
+      activeConversationId: localStorage.getItem('swingtails_active_conv') || null,
+      
+      // Messages state
+      messages: [],
+      inputMessage: '',
+
+      // Agent Streaming Status
+      isAgentLoading: false,
+      agentPhase: null, // { phase, detail, tool }
+
+      // Voice Settings
+      isRecording: false,
+      mediaRecorder: null,
+      audioChunks: [],
+      transcriptionMethod: 'whisper', // 'whisper' | 'webspeech'
+      voiceStatus: '',
+      speechRecognition: null,
+
+      // Audit log stats
+      auditLogs: [],
+      auditStats: {},
+      loadingAudit: false,
+      auditError: ''
+    };
+  },
+  computed: {
+    userNameLetter() {
+      if (this.currentUser && this.currentUser.name) {
+        return String(this.currentUser.name).charAt(0).toUpperCase();
+      }
+      return this.currentUserId ? String(this.currentUserId).charAt(0).toUpperCase() : 'U';
+    },
+    chatTitle() {
+      if (!this.activeConversationId) return 'Nuevo Chat';
+      const active = this.conversations.find(c => c.conversation_id === this.activeConversationId);
+      return active ? active.title : 'Chat Veterinario';
+    }
+  },
+  watch: {
+    backendUrl(newVal) {
+      localStorage.setItem('swingtails_backend_url', newVal);
+    },
+    activeTab(newTab) {
+      if (newTab === 'audit') {
+        this.loadAuditData();
+      }
+    }
+  },
+  mounted() {
+    // Re-verify login if JWT is present
+    if (this.jwt) {
+      this.decodeAndValidateManualJwt(this.jwt);
+    }
+    
+
+    
+    // Auto focus text input on start
+    this.$nextTick(() => {
+      this.focusInput();
+    });
+  },
+  methods: {
+    focusInput() {
+      if (this.$refs.inputBox) {
+        this.$refs.inputBox.focus();
+      }
+    },
+    // Authentication handlers
+    async handleLogin() {
+      this.loginLoading = true;
+      this.loginError = '';
+      try {
+        const response = await fetch('https://swingtails-api-yz02.onrender.com/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: this.email,
+            password: this.password
+          })
+        });
+
+        const resData = await response.json();
+        if (!response.ok || resData.status === 'error') {
+          throw new Error(resData.message || 'Error de credenciales en SwingTails');
+        }
+
+        const dataObj = resData.data || {};
+        const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
+        if (!token) {
+          throw new Error('No se devolvió un token de acceso desde el servidor');
+        }
+
+        this.setLoginSession(token);
+      } catch (err) {
+        this.loginError = err.message;
+      } finally {
+        this.loginLoading = false;
+      }
+    },
+
+    mapUserFromToken(token) {
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        
+        const payload = JSON.parse(jsonPayload);
+        
+        // Similar mapping function to userResponseToEntity in Dart
+        return {
+          id: payload.id || payload.userId || payload.user_id,
+          name: payload.name || 'Usuario',
+          email: payload.email || '',
+          phone: payload.phone_number || payload.phone || null,
+          imageUrl: payload.image_url || payload.imageUrl || null,
+          role: payload.role || null,
+          address: payload.street ? {
+            street: payload.street,
+            exteriorNumber: payload.exterior_number,
+            neighborhood: payload.neighborhood,
+            postalCode: payload.postal_code,
+            city: payload.city,
+            state: payload.state
+          } : null
+        };
+      } catch (e) {
+        console.error('Error decoding user from token:', e);
+        return null;
+      }
+    },
+    decodeAndValidateManualJwt(token) {
+      const user = this.mapUserFromToken(token);
+      if (user && user.id) {
+        this.currentUser = user;
+        this.currentUserId = user.id;
+        this.setLoginSession(token);
+      } else {
+        this.loginError = 'Formato de JWT inválido o no contiene información de usuario';
+        this.isLoggedIn = false;
+        this.jwt = '';
+        localStorage.removeItem('swingtails_jwt');
+      }
+    },
+    setLoginSession(token) {
+      this.jwt = token;
+      localStorage.setItem('swingtails_jwt', token);
+      
+      const user = this.mapUserFromToken(token);
+      if (user) {
+        this.currentUser = user;
+        this.currentUserId = user.id;
+      } else {
+        this.currentUser = null;
+        this.currentUserId = 99;
+      }
+
+      this.isLoggedIn = true;
+      this.loadConversationsList();
+
+      if (this.activeConversationId) {
+        this.loadConversation(this.activeConversationId);
+      }
+      
+      this.$nextTick(() => {
+        this.focusInput();
+      });
+    },
+    handleLogout() {
+      this.isLoggedIn = false;
+      this.jwt = '';
+      this.currentUser = null;
+      this.currentUserId = null;
+      this.messages = [];
+      this.conversations = [];
+      this.activeConversationId = null;
+      localStorage.removeItem('swingtails_jwt');
+      localStorage.removeItem('swingtails_active_conv');
+    },
+
+    // Conversations management
+    async loadConversationsList() {
+      try {
+        const response = await fetch(`${this.backendUrl}/conversations`, {
+          headers: {
+            'Authorization': `Bearer ${this.jwt}`,
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+        if (response.ok) {
+          this.conversations = await response.json();
+        }
+      } catch (err) {
+        console.error('Error cargando historial de chats:', err);
+      }
+    },
+    async loadConversation(conversationId) {
+      this.activeConversationId = conversationId;
+      localStorage.setItem('swingtails_active_conv', conversationId);
+      this.messages = [];
+      this.isAgentLoading = true;
+      this.agentPhase = { phase: 'thinking', detail: 'Recuperando historial...' };
+
+      try {
+        const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
+          headers: {
+            'Authorization': `Bearer ${this.jwt}`,
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+        if (!response.ok) throw new Error('Error al cargar conversación');
+        const data = await response.json();
+        
+        // Map messages to bubble structure
+        // Backend returns: list of {"role": "user"|"assistant", "content": "..."}
+        this.messages = data.messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          blocked: false,
+          metrics: null // Metricas solo persisten en observabilidad local en BD
+        }));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        this.isAgentLoading = false;
+        this.agentPhase = null;
+        this.scrollToBottom();
+      }
+    },
+    startNewConversation() {
+      this.activeConversationId = null;
+      localStorage.removeItem('swingtails_active_conv');
+      this.messages = [];
+      this.focusInput();
+    },
+    async deleteConversation(conversationId) {
+      if (!confirm('¿Seguro que deseas eliminar este chat?')) return;
+      try {
+        const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${this.jwt}`,
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+        if (response.ok) {
+          if (this.activeConversationId === conversationId) {
+            this.startNewConversation();
+          }
+          this.loadConversationsList();
+        }
+      } catch (err) {
+        console.error('Error al borrar conversación:', err);
+      }
+    },
+    clearActiveChatMessages() {
+      this.messages = [];
+    },
+
+    // Suggestion card clicked
+    applySuggestion(text) {
+      this.inputMessage = text;
+      this.sendMessage();
+    },
+
+    // Sending messages (SSE integration)
+    async sendMessage() {
+      const text = this.inputMessage.trim();
+      if (!text || this.isAgentLoading) return;
+
+      this.inputMessage = '';
+      
+      // Append user message
+      this.messages.push({
+        role: 'user',
+        content: text,
+        blocked: false
+      });
+
+      this.scrollToBottom();
+      
+      this.isAgentLoading = true;
+      this.agentPhase = { phase: 'searching', detail: 'Iniciando búsqueda...' };
+
+      // Initialize assistant empty response to stream into
+      const assistantMessageIndex = this.messages.length;
+      this.messages.push({
+        role: 'assistant',
+        content: '',
+        blocked: false,
+        metrics: null
+      });
+
+      try {
+        const response = await fetch(`${this.backendUrl}/chat/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.jwt}`,
+            'ngrok-skip-browser-warning': 'true'
+          },
+          body: JSON.stringify({
+            message: text,
+            conversation_id: this.activeConversationId || undefined
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || `Fallo del Servidor (${response.status})`);
+        }
+
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += value;
+
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            if (!part.trim()) continue;
+
+            let eventName = '';
+            let dataStr = '';
+
+            const lines = part.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                eventName = line.slice(6).trim();
+              } else if (line.startsWith('data:')) {
+                dataStr = line.slice(5).trim();
+              }
+            }
+
+            if (dataStr) {
+              try {
+                const data = JSON.parse(dataStr);
+                this.handleSseEvent(assistantMessageIndex, eventName, data);
+              } catch (err) {
+                console.error('Error parseando JSON SSE:', err, dataStr);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        this.messages[assistantMessageIndex].content = `Error de Conexión: No se pudo contactar con la IA en ${this.backendUrl}. Detalle: ${err.message}`;
+        this.isAgentLoading = false;
+        this.agentPhase = null;
+      } finally {
+        this.scrollToBottom();
+      }
+    },
+    handleSseEvent(msgIndex, event, data) {
+      const msg = this.messages[msgIndex];
+      if (!msg) return;
+
+      switch (event) {
+        case 'phase':
+          // Update visual phase loading indicator
+          this.agentPhase = {
+            phase: data.phase,
+            detail: data.detail,
+            tool: data.tool || null
+          };
+          break;
+
+        case 'token':
+          // Typing effect: Append token to text content
+          this.agentPhase = { phase: 'generating', detail: 'Transmitiendo respuesta...' };
+          msg.content += data.text;
+          this.scrollToBottom();
+          break;
+
+        case 'blocked':
+          // Guardrail triggered!
+          msg.blocked = true;
+          msg.content = data.message;
+          this.isAgentLoading = false;
+          this.agentPhase = null;
+          break;
+
+        case 'done':
+          // Interaction completed
+          this.isAgentLoading = false;
+          this.agentPhase = null;
+
+          if (data.blocked) {
+            msg.blocked = true;
+          } else {
+            // Save metrics to display
+            msg.metrics = {
+              ttft_ms: data.ttft_ms,
+              total_latency_ms: data.total_latency_ms,
+              tokens_per_second: data.tokens_per_second,
+              compacted: data.compacted,
+              tools_executed: data.tools_executed || []
+            };
+          }
+
+          // Save conversation_id for subsequent turns
+          if (data.conversation_id && !this.activeConversationId) {
+            this.activeConversationId = data.conversation_id;
+            localStorage.setItem('swingtails_active_conv', data.conversation_id);
+          }
+
+          // Reload sidebars to reflect new/updated conversations
+          this.loadConversationsList();
+          this.scrollToBottom();
+          this.$nextTick(() => {
+            this.focusInput();
+          });
+          break;
+
+        case 'error':
+          msg.content += `\n[Error en streaming: ${data.message}]`;
+          this.isAgentLoading = false;
+          this.agentPhase = null;
+          break;
+      }
+    },
+
+    // Voice recording & Speech-to-Text
+    toggleVoiceRecord() {
+      if (this.isRecording) {
+        this.stopRecording();
+      } else {
+        this.startRecording();
+      }
+    },
+    async startRecording() {
+      this.voiceStatus = '';
+      if (this.transcriptionMethod === 'webspeech') {
+        this.startWebSpeechRecognition();
+        return;
+      }
+
+      // Local Whisper Recording via Backend
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        this.voiceStatus = 'Grabación de audio no soportada en este navegador';
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.audioChunks = [];
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        
+        this.mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            this.audioChunks.push(event.data);
+          }
+        };
+
+        this.mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+          this.sendAudioToBackend(audioBlob);
+          
+          // Close media inputs
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        this.mediaRecorder.start();
+        this.isRecording = true;
+      } catch (err) {
+        console.error(err);
+        this.voiceStatus = 'Acceso al micrófono denegado.';
+      }
+    },
+    stopRecording() {
+      if (this.transcriptionMethod === 'webspeech') {
+        this.stopWebSpeechRecognition();
+        return;
+      }
+
+      if (this.mediaRecorder && this.isRecording) {
+        this.mediaRecorder.stop();
+        this.isRecording = false;
+      }
+    },
+    async sendAudioToBackend(blob) {
+      this.voiceStatus = 'Transcribiendo audio con Whisper local...';
+      try {
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+
+        const response = await fetch(`${this.backendUrl}/transcribe`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.jwt}`,
+            'ngrok-skip-browser-warning': 'true'
+          },
+          body: formData
+        });
+
+        if (!response.ok) {
+          if (response.status === 503) {
+            throw new Error('Whisper no está disponible en el backend. Prueba con la opción de navegador (Web STT).');
+          }
+          throw new Error(`Error en transcripción (${response.status})`);
+        }
+
+        const data = await response.json();
+        if (data.text && data.text.trim()) {
+          this.inputMessage = data.text;
+          this.voiceStatus = `Transcrito con éxito (${data.duration_ms}ms)`;
+          this.focusInput();
+        } else {
+          this.voiceStatus = 'No se detectó voz clara.';
+        }
+      } catch (err) {
+        console.error(err);
+        this.voiceStatus = err.message;
+      }
+    },
+
+    // Web Speech API client fallback
+    startWebSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        this.voiceStatus = 'Web Speech API no está soportada en tu navegador (usa Chrome o Safari).';
+        return;
+      }
+
+      try {
+        this.speechRecognition = new SpeechRecognition();
+        this.speechRecognition.lang = 'es-MX';
+        this.speechRecognition.interimResults = false;
+        this.speechRecognition.maxAlternatives = 1;
+
+        this.speechRecognition.onstart = () => {
+          this.isRecording = true;
+        };
+
+        this.speechRecognition.onerror = (event) => {
+          console.error('Speech error:', event.error);
+          this.voiceStatus = `Error Speech API: ${event.error}`;
+          this.isRecording = false;
+        };
+
+        this.speechRecognition.onend = () => {
+          this.isRecording = false;
+        };
+
+        this.speechRecognition.onresult = (event) => {
+          const resultText = event.results[0][0].transcript;
+          if (resultText) {
+            this.inputMessage = resultText;
+            this.voiceStatus = 'Dictado finalizado';
+            this.focusInput();
+          }
+        };
+
+        this.speechRecognition.start();
+      } catch (err) {
+        console.error(err);
+        this.voiceStatus = 'Fallo al inicializar dictado';
+        this.isRecording = false;
+      }
+    },
+    stopWebSpeechRecognition() {
+      if (this.speechRecognition) {
+        this.speechRecognition.stop();
+        this.isRecording = false;
+      }
+    },
+
+    // Audit logs fetcher
+    async loadAuditData() {
+      this.loadingAudit = true;
+      this.auditError = '';
+      try {
+        // Parallel requests
+        const [logsResponse, statsResponse] = await Promise.all([
+          fetch(`${this.backendUrl}/observability/logs?limit=50`, {
+            headers: {
+              'Authorization': `Bearer ${this.jwt}`,
+              'ngrok-skip-browser-warning': 'true'
+            }
+          }),
+          fetch(`${this.backendUrl}/observability/stats`, {
+            headers: {
+              'Authorization': `Bearer ${this.jwt}`,
+              'ngrok-skip-browser-warning': 'true'
+            }
+          })
+        ]);
+
+        if (!logsResponse.ok) {
+          if (logsResponse.status === 404) {
+            throw new Error('El endpoint /observability/logs devolvió error 404 (Not Found). El backend remoto no parece estar ejecutando el código actualizado.');
+          }
+          throw new Error(`HTTP ${logsResponse.status} al obtener logs.`);
+        }
+        if (!statsResponse.ok) {
+          if (statsResponse.status === 404) {
+            throw new Error('El endpoint /observability/stats devolvió error 404 (Not Found). El backend remoto no parece estar ejecutando el código actualizado.');
+          }
+          throw new Error(`HTTP ${statsResponse.status} al obtener estadísticas.`);
+        }
+
+        this.auditLogs = await logsResponse.json();
+        this.auditStats = await statsResponse.json();
+      } catch (err) {
+        console.error('Error fetching audit logs:', err);
+        this.auditError = err.message;
+        this.auditLogs = [];
+        this.auditStats = {};
+      } finally {
+        this.loadingAudit = false;
+      }
+    },
+
+    // Helpers
+    parseTools(toolsStr) {
+      if (!toolsStr) return [];
+      try {
+        return typeof toolsStr === 'string' ? JSON.parse(toolsStr) : toolsStr;
+      } catch (e) {
+        return [];
+      }
+    },
+    scrollToBottom() {
+      this.$nextTick(() => {
+        const box = this.$refs.messagesBox;
+        if (box) {
+          box.scrollTop = box.scrollHeight;
+        }
+      });
+    },
+    formatDate(dateStr) {
+      if (!dateStr) return '';
+      try {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      } catch (e) {
+        return dateStr;
+      }
+    },
+    formatDateTime(dateStr) {
+      if (!dateStr) return '';
+      try {
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      } catch (e) {
+        return dateStr;
+      }
+    }
+  }
+};
+</script>
+
+<style>
+/* Global CSS transitions and imports. Component layout handles locally scoped. */
+</style>
