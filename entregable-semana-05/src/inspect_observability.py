@@ -24,7 +24,7 @@ def _fmt(v, suffix: str = "") -> str:
 
 
 def _print_row(row: dict) -> None:
-    blocked = "🛑 BLOQUEADO" if row["was_blocked"] else "✅"
+    blocked = "[BLOQUEADO]" if row["was_blocked"] else "[OK]"
     print(f"\n#{row['id']}  [{row['timestamp']}]  {blocked}")
     print(f"  session : {row['session_id']}")
     print(f"  usuario : {row['user_prompt'][:100]}")
