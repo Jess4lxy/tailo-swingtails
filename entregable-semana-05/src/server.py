@@ -606,6 +606,26 @@ async def transcribe(
 
 
 # ---------------------------------------------------------------------------
+# Observabilidad (entregable semana 05 - adicionales para el frontend)
+# ---------------------------------------------------------------------------
+@app.get("/observability/logs")
+def get_observability_logs(
+    limit: int = 50,
+    authorization: str | None = Header(default=None)
+) -> list[dict]:
+    _validate_token(authorization)
+    return observability.recent_logs(limit=limit)
+
+
+@app.get("/observability/stats")
+def get_observability_stats(
+    authorization: str | None = Header(default=None)
+) -> dict:
+    _validate_token(authorization)
+    return observability.stats()
+
+
+# ---------------------------------------------------------------------------
 # Conversaciones (heredado de semana 04, sin cambios funcionales)
 # ---------------------------------------------------------------------------
 @app.get("/conversations", response_model=list[ConversationSummary])
