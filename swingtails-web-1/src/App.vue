@@ -204,7 +204,18 @@
                 </div>
 
                 <!-- Standard text markdown rendering -->
-                <div v-else style="white-space: pre-wrap; word-break: break-word;">{{ msg.content }}</div>
+                <div v-else style="white-space: pre-wrap; word-break: break-word;">
+                  <template v-if="msg.role === 'assistant' && !msg.content">
+                    <div class="typing-indicator">
+                      <span></span>
+                      <span></span>
+                      <span></span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    {{ msg.content }}
+                  </template>
+                </div>
 
                 <!-- Observability Metrics (shown on completed bot responses) -->
                 <div v-if="msg.role === 'assistant' && msg.metrics && !msg.blocked" class="message-metrics">
@@ -295,8 +306,8 @@
               </span>
               <span v-else></span>
 
-              <div class="toggle-switch" @click="transcriptionMethod = transcriptionMethod === 'webspeech' ? 'whisper' : 'webspeech'">
-                <span>Transcribir con: <strong>{{ transcriptionMethod === 'webspeech' ? 'Web Speech API' : 'Whisper (Local)' }}</strong></span>
+              <div class="toggle-switch" @click="transcriptionMethod = 'whisper'">
+                <span>Transcribir con: <strong>Whisper (Local)</strong></span>
               </div>
             </div>
           </footer>
@@ -982,7 +993,7 @@ export default {
 
         if (!response.ok) {
           if (response.status === 503) {
-            throw new Error('Whisper no está disponible en el backend. Prueba con la opción de navegador (Web STT).');
+            throw new Error('Whisper no está disponible en este momento. Intenta en unos momentos.');
           }
           throw new Error(`Error en transcripción (${response.status})`);
         }
