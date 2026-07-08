@@ -215,18 +215,18 @@
                   </div>
                 </div>
 
-                <!-- Standard text markdown rendering -->
-                <div v-else style="white-space: pre-wrap; word-break: break-word;">
-                  <template v-if="msg.role === 'assistant' && !msg.content">
-                    <div class="typing-indicator">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
-                  </template>
-                  <template v-else>
-                    {{ msg.content }}
-                  </template>
+                <!-- Standard text / markdown rendering -->
+                <div v-else class="message-body">
+                  <!-- Asistente pensando (sin contenido aún) -->
+                  <div v-if="msg.role === 'assistant' && !msg.content" class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <!-- Respuesta del asistente: markdown renderizado (negritas, listas, código) -->
+                  <div v-else-if="msg.role === 'assistant'" class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+                  <!-- Mensaje del usuario: texto plano -->
+                  <div v-else style="white-space: pre-wrap; word-break: break-word;">{{ msg.content }}</div>
                 </div>
 
                 <!-- Observability Metrics (shown on completed bot responses) -->
@@ -497,6 +497,12 @@ export default {
 
       email: '',
       password: '',
+      // Credenciales guardadas SOLO EN MEMORIA (nunca en localStorage) para el
+      // re-login silencioso cuando el access token vence (~30 min) mientras la
+      // pestaña sigue abierta. Se pierden al recargar la pagina (a proposito:
+      // no dejamos la contraseña en disco). Se limpian al cerrar sesion.
+      savedEmail: '',
+      savedPassword: '',
       jwt: localStorage.getItem('swingtails_jwt') || '',
       manualJwt: '',
       currentUserId: null,
@@ -560,7 +566,11 @@ export default {
   mounted() {
     // Re-verify login if JWT is present
     if (this.jwt) {
-      this.decodeAndValidateManualJwt(this.jwt);
+      if (this.isJwtExpired(this.jwt)) {
+        this.forceReauth('Tu sesión expiró. Inicia sesión de nuevo para continuar.');
+      } else {
+        this.decodeAndValidateManualJwt(this.jwt);
+      }
     }
     
 
@@ -602,6 +612,17 @@ export default {
         if (!token) {
           throw new Error('No se devolvió un token de acceso desde el servidor');
         }
+
+        // Guardamos también el refreshToken. Hoy la API de SwingTails NO tiene
+        // un refresh funcional (POST /api/auth/refresh-token responde
+        // "Token mismatch"), pero lo persistimos para poder canjearlo cuando el
+        // equipo de la API corrija ese endpoint, sin volver a tocar el front.
+        const refresh = dataObj.refreshToken || resData.refreshToken;
+        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
+
+        // Snapshot en memoria para el re-login silencioso (no toca localStorage).
+        this.savedEmail = this.email;
+        this.savedPassword = this.password;
 
         this.setLoginSession(token);
       } catch (err) {
@@ -688,8 +709,69 @@ export default {
       this.messages = [];
       this.conversations = [];
       this.activeConversationId = null;
+      // Olvidar credenciales en memoria: sin esto el re-login silencioso
+      // reautenticaria justo despues de cerrar sesion.
+      this.savedEmail = '';
+      this.savedPassword = '';
+      this.password = '';
       localStorage.removeItem('swingtails_jwt');
+      localStorage.removeItem('swingtails_refresh');
       localStorage.removeItem('swingtails_active_conv');
+    },
+
+    // ¿El JWT ya venció? (lee el claim `exp`; margen de 30s de skew).
+    // Los access tokens de SwingTails duran ~30 min y hoy NO hay refresh
+    // funcional en la API, así que al vencer hay que reautenticar.
+    isJwtExpired(token) {
+      if (!token) return true;
+      try {
+        const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(base64));
+        if (!payload.exp) return false; // sin exp: no lo bloqueamos
+        return Date.now() / 1000 > payload.exp + 30;
+      } catch (e) {
+        return false;
+      }
+    },
+
+    // Re-login SILENCIOSO: como la API no tiene refresh funcional, si tenemos
+    // las credenciales en memoria volvemos a autenticar sin molestar al usuario.
+    // Devuelve true si consiguió un token nuevo y válido. NO recarga la vista ni
+    // las conversaciones: solo renueva el token en curso.
+    async silentReauth() {
+      if (!this.savedEmail || !this.savedPassword) return false;
+      try {
+        const response = await fetch('https://swingtails-api-yz02.onrender.com/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: this.savedEmail, password: this.savedPassword })
+        });
+        const resData = await response.json();
+        if (!response.ok || resData.status === 'error') return false;
+        const dataObj = resData.data || {};
+        const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
+        if (!token || this.isJwtExpired(token)) return false;
+
+        const refresh = dataObj.refreshToken || resData.refreshToken;
+        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
+
+        // Actualización mínima del token (sin loadConversationsList ni reset).
+        this.jwt = token;
+        localStorage.setItem('swingtails_jwt', token);
+        const user = this.mapUserFromToken(token);
+        if (user) { this.currentUser = user; this.currentUserId = user.id; }
+        this.isLoggedIn = true;
+        return true;
+      } catch (e) {
+        console.error('Silent re-auth falló:', e);
+        return false;
+      }
+    },
+
+    // Sesión vencida: cierra sesión y muestra la pantalla de login con aviso.
+    forceReauth(message) {
+      this.handleLogout();
+      this.loginError = message || 'Tu sesión expiró. Inicia sesión de nuevo.';
     },
 
     // Conversations management
@@ -780,9 +862,19 @@ export default {
     },
 
     // Sending messages (SSE integration)
-    async sendMessage() {
+    async sendMessage(isRetry = false) {
       const text = this.inputMessage.trim();
       if (!text || this.isAgentLoading) return;
+
+      // Sesión vencida: intentamos re-login silencioso; si no hay credenciales
+      // en memoria (o falla), recién ahí pedimos al usuario iniciar sesión.
+      if (this.isJwtExpired(this.jwt)) {
+        const ok = await this.silentReauth();
+        if (!ok) {
+          this.forceReauth('Tu sesión expiró. Inicia sesión de nuevo para continuar.');
+          return;
+        }
+      }
 
       this.inputMessage = '';
       
@@ -821,6 +913,19 @@ export default {
           })
         });
 
+        if (response.status === 401) {
+          // Token vencido durante el envío: quitamos el placeholder y probamos
+          // un re-login silencioso; si funciona, reintentamos UNA vez.
+          this.messages.splice(assistantMessageIndex, 1);
+          this.isAgentLoading = false;
+          this.agentPhase = null;
+          if (!isRetry && await this.silentReauth()) {
+            this.inputMessage = text;
+            return this.sendMessage(true);
+          }
+          this.forceReauth('Tu sesión expiró. Inicia sesión de nuevo para continuar.');
+          return;
+        }
         if (!response.ok) {
           const errText = await response.text();
           throw new Error(errText || `Fallo del Servidor (${response.status})`);
@@ -1139,6 +1244,50 @@ export default {
       } catch (e) {
         return [];
       }
+    },
+
+    // Renderiza el markdown que emite la IA a HTML SEGURO. Primero escapa todo
+    // el HTML (así el modelo no puede inyectar etiquetas) y luego solo inserta
+    // las etiquetas que nosotros generamos. Cubre: negritas, cursivas, código,
+    // listas numeradas y con viñetas, encabezados, enlaces y párrafos.
+    renderMarkdown(text) {
+      if (!text) return '';
+      const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const inline = (s) => s
+        .replace(/`([^`]+)`/g, '<code>$1</code>')                         // `código`
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')               // **negrita**
+        .replace(/__([^_]+)__/g, '<strong>$1</strong>')                   // __negrita__
+        .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')         // *cursiva*
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,                  // [texto](url)
+          '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+      const lines = esc(text).split('\n');
+      let html = '';
+      let listType = null;               // 'ul' | 'ol' | null
+      let para = [];
+      const closeList = () => { if (listType) { html += `</${listType}>`; listType = null; } };
+      const flushPara = () => { if (para.length) { html += `<p>${inline(para.join(' '))}</p>`; para = []; } };
+
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) { flushPara(); closeList(); continue; }
+        let m;
+        if ((m = line.match(/^#{1,6}\s+(.*)$/))) {          // # encabezado
+          flushPara(); closeList(); html += `<h4>${inline(m[1])}</h4>`;
+        } else if ((m = line.match(/^\d+[.)]\s+(.*)$/))) {  // 1. lista numerada
+          flushPara();
+          if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol'; }
+          html += `<li>${inline(m[1])}</li>`;
+        } else if ((m = line.match(/^[-*•]\s+(.*)$/))) {    // * o - viñeta
+          flushPara();
+          if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
+          html += `<li>${inline(m[1])}</li>`;
+        } else {                                            // texto normal
+          closeList(); para.push(line);
+        }
+      }
+      flushPara(); closeList();
+      return html;
     },
     scrollToBottom() {
       this.$nextTick(() => {

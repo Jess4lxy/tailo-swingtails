@@ -37,8 +37,10 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import re
 import tempfile
 import time
+import unicodedata
 from pathlib import Path
 
 import ollama
@@ -161,6 +163,11 @@ def _validate_token(authorization: str | None) -> tuple[api_client.SwingTailsCli
     """Valida el JWT y devuelve (cliente ligado al token, user_id). NO toca el
     ContextVar: el caller decide cuando/donde activarlo (en el hilo correcto)."""
     token = _bearer_token(authorization)
+    if api_client.token_is_expired(token):
+        # Token vencido: 401 explicito para que el front reautentique, en lugar
+        # de reenviarlo muerto y que una tool devuelva un 401 que el modelo
+        # relate como un confuso "su sesion ha expirado".
+        raise HTTPException(status_code=401, detail="Token expirado; inicia sesion de nuevo")
     client = api_client.client_from_token(token)
     if client.current_user_id is None:
         raise HTTPException(status_code=401, detail="Token invalido o sin id de usuario")
@@ -259,9 +266,11 @@ def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> 
         context = sessions.build_context(conv_id)
         messages = context + [{"role": "user", "content": _date_prefixed(user_msg)}]
 
-        # Fase 1: ciclo de tools (con traza para la observabilidad).
+        # Fase 1: ciclo de tools (con traza para la observabilidad). En saludos
+        # y preguntas de capacidades se omite: no se consulta la cuenta.
         trace: list[dict] = []
-        messages = _run_tool_cycle_traced(messages, trace)
+        if not _is_smalltalk(req.message):
+            messages = _run_tool_cycle_traced(messages, trace)
 
         # Fase 2: respuesta final (sin streaming) + stats para tokens/segundo.
         reply, eval_count, eval_duration = _generate_final(messages)
@@ -383,6 +392,47 @@ async def chat_stream(
     )
 
 
+# ---------------------------------------------------------------------------
+# Deteccion de saludo / pregunta de capacidades (small talk)
+# ---------------------------------------------------------------------------
+# El modelo 8B tiende a llamar list_my_pets ante un simple "en que me ayudas?"
+# y responder soltando los datos de las mascotas sin que se lo pidan. Como el
+# prompt solo no basta, en estos turnos NO le ofrecemos tools: asi responde con
+# texto describiendo sus capacidades, sin tocar la cuenta del usuario.
+_CAPABILITY_RX = re.compile(
+    r"en que (me |te )?(puedes |podrias |podras )?ayud"
+    r"|con que (me |te )?(puedes |podrias )?ayud"
+    r"|de que (me )?(puedes )?ayud"
+    r"|que (puedes|sabes|podrias) hacer"
+    r"|para que (sirves|eres)"
+    r"|sobre que (mascotas|animales|temas|cosas)"
+    r"|quien eres|que eres\b|como te llamas|como funcionas"
+    r"|que es swingtails|que es tailo|que haces"
+)
+_GREETING_RX = re.compile(
+    r"^(hola|hey|holi|buenas|buenos dias|buenas tardes|buenas noches"
+    r"|que tal|que onda|saludos|hello|hi)\b"
+)
+_THANKS_RX = re.compile(r"^(gracias|muchas gracias|ok gracias|vale gracias|perfecto gracias)\b")
+
+
+def _norm_msg(text: str) -> str:
+    t = unicodedata.normalize("NFKD", (text or "").lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _is_smalltalk(text: str) -> bool:
+    """True si el mensaje es un saludo/agradecimiento breve o una pregunta sobre
+    las capacidades del asistente (no una peticion real sobre su cuenta)."""
+    n = _norm_msg(text)
+    if _CAPABILITY_RX.search(n):
+        return True
+    if len(n.split()) <= 6 and (_GREETING_RX.search(n) or _THANKS_RX.search(n)):
+        return True
+    return False
+
+
 def _run_chat_pipeline(req: ChatRequest, user_id: int):
     """Generador SINCRONO del turno de chat. Yields dicts {type, ...}.
 
@@ -405,17 +455,22 @@ def _run_chat_pipeline(req: ChatRequest, user_id: int):
     messages = context + [{"role": "user", "content": _date_prefixed(user_msg)}]
 
     # --- Fase 1: ciclo de tools (pensando / ejecutando accion) --------------
+    # En saludos y preguntas de capacidades NO ofrecemos tools: el modelo debe
+    # describir lo que hace, no consultar la cuenta del usuario.
+    smalltalk = _is_smalltalk(req.message)
     max_iters = 4
     exhausted = True
     for _ in range(max_iters):
         yield {"type": "phase", "phase": "thinking", "detail": "Procesando tu solicitud…"}
-        resp = _ollama().chat(
+        chat_kwargs: dict = dict(
             model=LLM_MODEL,
             messages=messages,
-            tools=TOOL_SCHEMAS,
             stream=False,
             options={"temperature": 0},
         )
+        if not smalltalk:
+            chat_kwargs["tools"] = TOOL_SCHEMAS
+        resp = _ollama().chat(**chat_kwargs)
         msg = resp.get("message", {}) or {}
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:

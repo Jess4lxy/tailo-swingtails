@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import contextvars
 import json
+import time
 from typing import Any
 
 import requests
@@ -57,6 +58,25 @@ def _decode_jwt_user_id(token: str) -> int | None:
         return int(uid) if uid is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def token_is_expired(token: str, skew: int = 30) -> bool:
+    """True si el JWT trae un `exp` ya vencido (con `skew` seg de margen).
+
+    Los access tokens de SwingTails duran ~30 min. Detectamos aqui la expiracion
+    para devolver un 401 limpio en lugar de reenviar un token muerto y que el
+    modelo termine relatando un confuso \"su sesion ha expirado\". Si el token no
+    trae `exp` legible, devolvemos False (no bloqueamos tokens sin expiracion)."""
+    try:
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+    except (IndexError, ValueError, json.JSONDecodeError):
+        return False
+    exp = payload.get("exp")
+    if not isinstance(exp, (int, float)):
+        return False
+    return time.time() > (exp + skew)
 
 
 class SwingTailsClient:

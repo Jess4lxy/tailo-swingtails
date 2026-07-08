@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
+import unicodedata
 from typing import Any, Callable
 
 from api_client import get_client
@@ -117,8 +119,71 @@ def get_pet(pet_id: int) -> dict:
 # 'preguntar_al_usuario' para que el asistente pida el dato real en vez de
 # inventarlo. Es el mismo patron de book_appointment (nombres -> preguntar).
 VALID_SEX = {"Macho", "Hembra"}
-VALID_AGE = {"Cachorro", "Joven", "Adulto", "Senior"}
 VALID_HEIGHT = {"<30", "30-40", "41-50", "51-60", ">60"}
+
+# Especies claramente ficticias/miticas: NO se registran tal cual (seria dato
+# basura). Se compara sobre el texto normalizado (minusculas, sin acentos) y
+# SOLO cuando la especie es EXACTAMENTE una de estas: asi "dragon barbudo" o
+# "dragon de komodo", que SI son animales reales, no se bloquean; solo el
+# "dragon" a secas y demas criaturas de fantasia.
+_FICTIONAL_SPECIES = {
+    "dragon", "unicornio", "fenix", "grifo", "hipogrifo", "pegaso", "sirena",
+    "minotauro", "quimera", "kraken", "hidra", "basilisco", "cerbero",
+    "pokemon", "pikachu", "charizard", "digimon", "tamagotchi", "furia nocturna",
+    "dinosaurio", "trex", "t-rex", "velociraptor", "godzilla", "mascota virtual",
+}
+
+# Marcadores de especies EXTINTAS o prehistoricas (dinosaurios, homínidos,
+# megafauna): reales pero NO se pueden tener de mascota hoy, asi que se tratan
+# igual que las ficticias. Se buscan como subcadena del texto normalizado, por
+# lo que atrapan "tyrannosaurus rex", "pachycephalosaurus", "australopithecus",
+# etc. Los sufijos elegidos (-saurus/-raptor/-pithecus/-ceratops...) practicamente
+# no aparecen en ningun animal de compañia actual, asi que casi no hay falsos +.
+_EXTINCT_MARKERS = (
+    "saurus", "saurio", "raptor", "pithecus", "piteco", "ceratops",
+    "pterodactilo", "pterodactylo", "mamut", "mammoth", "mastodonte",
+    "mastodon", "megalodon", "smilodon", "trilobite", "neandertal",
+    "australopith", "homo erectus", "homo habilis", "dodo",
+)
+
+
+def _normalize_specie(s: Any) -> str:
+    """minusculas + sin acentos + espacios colapsados, para comparar especies."""
+    txt = str(s or "").strip().lower()
+    txt = unicodedata.normalize("NFKD", txt)
+    txt = "".join(c for c in txt if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", txt).strip()
+
+
+def _is_fictional_specie(specie: Any) -> bool:
+    """True si la especie NO es una mascota posible hoy: ficticia/mitica (match
+    exacto) o extinta/prehistorica (match por marcador). En ambos casos no se
+    registra: se pide el animal real y actual."""
+    n = _normalize_specie(specie)
+    if n in _FICTIONAL_SPECIES:
+        return True
+    return any(mark in n for mark in _EXTINCT_MARKERS)
+
+
+def _coerce_age(age: Any) -> int | None:
+    """Convierte la edad a un ENTERO de años (lo que exige la API real).
+
+    La API de SwingTails almacena `age` como numero entero (p.ej. 10), NO como
+    categoria. El modelo puede pasar "10", "10 años", " 10 " o 10; extraemos el
+    primer numero. Devuelve None si no hay un entero valido (>0) que enviar.
+    """
+    if age is None:
+        return None
+    if isinstance(age, bool):  # evita que True/False cuele como 1/0
+        return None
+    if isinstance(age, (int, float)):
+        n = int(age)
+        return n if n > 0 else None
+    m = re.search(r"\d+", str(age))
+    if not m:
+        return None
+    n = int(m.group())
+    return n if 0 < n < 100 else None
 
 
 def register_pet(
@@ -136,7 +201,8 @@ def register_pet(
         name: Nombre de la mascota.
         specie: Especie (perro, gato, ...). OBLIGATORIO en la API real.
         sex: 'Macho' o 'Hembra' (enum estricto del API).
-        age: 'Cachorro', 'Joven', 'Adulto' o 'Senior'.
+        age: Edad en AÑOS como numero entero (p.ej. 10). La API la guarda como
+            numero, NO como categoria. Si el usuario no la dijo, deja "".
         height: '<30', '30-40', '41-50', '51-60' o '>60' (cm). Debe venir del
             usuario; NO se deduce de la raza/peso/edad. Si el usuario no la dijo,
             deja este campo como cadena vacia "".
@@ -162,8 +228,9 @@ def register_pet(
         faltan.append("la especie (perro, gato, ...)")
     if sex not in VALID_SEX:
         faltan.append("el sexo (Macho o Hembra)")
-    if age not in VALID_AGE:
-        faltan.append("la edad (Cachorro, Joven, Adulto o Senior)")
+    age_num = _coerce_age(age)
+    if age_num is None:
+        faltan.append("la edad en años (un numero, por ejemplo 10)")
     if height not in VALID_HEIGHT:
         faltan.append("la altura en cm (<30, 30-40, 41-50, 51-60 o >60)")
     if faltan:
@@ -173,11 +240,22 @@ def register_pet(
                 f"las opciones; NO inventes estos valores (la altura NO se "
                 f"deduce de la raza, el peso ni la edad)."}
 
+    # Red de seguridad anti-dato-basura: no registres una especie de fantasia
+    # (dragon, unicornio, pokemon...). El nombre puede ser de fantasia, la
+    # especie no. Se pide el animal REAL antes de guardar.
+    if _is_fictional_specie(specie):
+        return {"preguntar_al_usuario":
+                f"«{specie}» no es una mascota que se pueda tener hoy (parece una "
+                f"especie de fantasia o extinta), asi que no puedo registrarla asi. "
+                f"¿A que animal REAL y actual corresponde {name or 'tu mascota'}? "
+                f"Por ejemplo: un perro, gato, conejo, o si es un reptil, un dragon "
+                f"barbudo o un gecko. Dime la especie real y lo registro."}
+
     body: dict[str, Any] = {
         "name": name,
         "specie": specie,
         "sex": sex,
-        "age": age,
+        "age": age_num,
         "height": height,
         "user_id": uid,
     }
@@ -211,7 +289,7 @@ def update_pet(
         name: Nombre.
         specie: Especie (perro, gato, ...).
         sex: 'Macho' o 'Hembra'.
-        age: 'Cachorro', 'Joven', 'Adulto' o 'Senior'.
+        age: Edad en AÑOS como numero entero (p.ej. 10). NO es categoria.
         height: '<30', '30-40', '41-50', '51-60' o '>60'.
         breed: Raza. Opcional.
         weight: Peso en kg. Opcional.
@@ -222,11 +300,22 @@ def update_pet(
     uid = _current_user_id()
     if uid is None:
         return dict(_NO_SESSION_ERROR)
+    age_num = _coerce_age(age)
+    if age_num is None:
+        return {"preguntar_al_usuario":
+                "Necesito la edad de la mascota en años (un numero, por ejemplo "
+                "10). Pideselo al usuario; no la inventes."}
+    if _is_fictional_specie(specie):
+        return {"preguntar_al_usuario":
+                f"«{specie}» no es una mascota posible hoy (fantasia o especie "
+                f"extinta). ¿A que animal REAL y actual corresponde? (por ejemplo: "
+                f"perro, gato, conejo, o un reptil como dragon barbudo o gecko). "
+                f"Dime la especie real y actualizo la ficha."}
     body: dict[str, Any] = {
         "name": name,
         "specie": specie,
         "sex": sex,
-        "age": age,
+        "age": age_num,
         "height": height,
         "user_id": uid,
     }
@@ -539,7 +628,7 @@ TOOL_SCHEMAS: list[dict] = [
                     "name": {"type": "string", "description": "Nombre de la mascota."},
                     "specie": {"type": "string", "description": "Especie: perro, gato, etc."},
                     "sex": {"type": "string", "description": "'Macho' o 'Hembra'. Si el usuario no lo dijo, pasa cadena vacia \"\"."},
-                    "age": {"type": "string", "description": "'Cachorro', 'Joven', 'Adulto' o 'Senior'. Si el usuario no lo dijo, pasa \"\"."},
+                    "age": {"type": "integer", "description": "Edad en AÑOS como numero entero (p.ej. 10). NO es una categoria. Si el usuario no lo dijo, pasa \"\"."},
                     "height": {"type": "string", "description": "Altura en cm: '<30', '30-40', '41-50', '51-60' o '>60'. Es una medida fisica que SOLO da el usuario; NUNCA la deduzcas de la raza, el peso ni la edad. Si el usuario no la dijo, pasa cadena vacia \"\"."},
                     "breed": {"type": "string", "description": "Raza (opcional)."},
                     "weight": {"type": "number", "description": "Peso en kg (opcional)."},
@@ -561,8 +650,8 @@ TOOL_SCHEMAS: list[dict] = [
                     "specie": {"type": "string", "description": "perro, gato, etc."},
                     "sex": {"type": "string", "enum": ["Macho", "Hembra"]},
                     "age": {
-                        "type": "string",
-                        "enum": ["Cachorro", "Joven", "Adulto", "Senior"],
+                        "type": "integer",
+                        "description": "Edad en años (numero entero, p.ej. 10). NO es categoria.",
                     },
                     "height": {
                         "type": "string",
