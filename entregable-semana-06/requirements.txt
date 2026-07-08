@@ -1,0 +1,33 @@
+# Tailo Agent - UX/Voz + Seguridad + Observabilidad (Entregable Semana 05)
+# Probado con Python 3.11
+
+# Reutiliza el pipeline RAG de la semana 02
+chromadb==0.5.5
+ollama==0.3.3
+langchain-text-splitters==0.3.0
+
+# Cliente HTTP para la API publica de SwingTails
+# (https://swingtails-api-yz02.onrender.com)
+requests==2.32.3
+
+# Carga de variables de entorno (JWT, base URL)
+python-dotenv==1.0.1
+
+# Servicio HTTP multiusuario (server.py): la app reenvia el Bearer token del
+# usuario y Tailo opera en su nombre. Incluye streaming SSE (/chat/stream).
+fastapi==0.115.6
+uvicorn==0.32.1
+
+# Subida de archivos multipart para la entrada de voz (POST /transcribe).
+python-multipart==0.0.18
+
+# NOTA sobre la VOZ (Whisper):
+# faster-whisper se instala APARTE -> requirements-voice.txt
+#   pip install -r requirements-voice.txt
+# Se separo porque su dependencia 'av' (PyAV) NO tiene wheel para Python 3.14
+# (intenta compilar desde fuente y falla sin los headers de FFmpeg). Usar un
+# venv con Python 3.11/3.12 para la voz. El backend corre sin esto: el endpoint
+# /transcribe devuelve 503 con instrucciones si Whisper no esta instalado.
+
+# Auxiliares
+tqdm==4.66.5
