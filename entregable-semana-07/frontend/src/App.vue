@@ -3,8 +3,11 @@
     <!-- Login Screen Overlay -->
     <div v-if="!isLoggedIn" class="login-overlay">
       <div class="login-card">
+        <!-- El tamaño del logo lo maneja `.login-logo img` en style.css (NO con
+             estilos inline: un `style=` gana a cualquier @media y dejaria el
+             logo fijo en 80px tambien en movil). -->
         <div class="login-logo">
-          <img src="./assets/Logos/Mobile Logo/Swingtails Full V3 DEFINITIVO.png" alt="SwingTails Logo" style="width: 80px; height: 80px; margin-bottom: 12px; object-fit: contain;" />
+          <img src="./assets/Logos/Mobile Logo/Swingtails Full V3 DEFINITIVO.png" alt="SwingTails Logo" />
           <h1>SwingTails AI</h1>
           <p>Asistente Veterinario Inteligente Local</p>
         </div>

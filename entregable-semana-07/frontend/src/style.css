@@ -156,7 +156,14 @@ body {
   background: radial-gradient(circle at center, var(--custom-off-white) 0%, var(--screen-bg) 100%);
   display: flex;
   justify-content: center;
-  align-items: center;
+  /* NO usamos align-items:center: con un formulario alto (el registro lleva 5
+     campos + la checklist de la contraseña) el centrado recorta la parte de
+     ARRIBA y esa zona queda inalcanzable al hacer scroll. Con flex-start +
+     `margin:auto` en la tarjeta obtenemos lo mejor de ambos: se centra cuando
+     sobra espacio y se puede desplazar cuando no cabe. */
+  align-items: flex-start;
+  overflow-y: auto;          /* pantallas bajas / teclado abierto / horizontal */
+  -webkit-overflow-scrolling: touch;
   z-index: 999;
   padding: 20px;
 }
@@ -164,6 +171,7 @@ body {
 .login-card {
   width: 100%;
   max-width: 480px;
+  margin: auto;              /* centra vertical y horizontalmente sin recortar */
   background: var(--bg-glass);
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
@@ -295,6 +303,128 @@ body {
 
 .pwd-rule.ok {
   color: #2ecc71;
+}
+
+/* ===========================================================================
+   RESPONSIVE de la pantalla de acceso (login + registro)
+   ---------------------------------------------------------------------------
+   El registro es un formulario ALTO (5 campos + checklist), asi que ademas de
+   estrechar hay que COMPACTAR el alto: en un movil pequeño o en horizontal, el
+   boton "Crear cuenta" debe seguir siendo alcanzable.
+   =========================================================================== */
+
+/* --- Movil / tablet vertical --------------------------------------------- */
+@media (max-width: 768px) {
+  .login-overlay {
+    padding: 16px 12px;
+  }
+
+  .login-card {
+    border-radius: 20px;
+    padding: 28px 22px;      /* 40px dejaba muy poco ancho util en un movil */
+  }
+
+  .login-logo {
+    margin-bottom: 24px;
+  }
+
+  .login-logo img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .login-logo h1 {
+    font-size: 1.55rem;
+  }
+
+  .login-logo p {
+    font-size: 0.82rem;
+  }
+
+  .auth-tabs {
+    margin-bottom: 20px;
+  }
+
+  .auth-tab {
+    padding: 9px 8px;
+    font-size: 0.85rem;
+  }
+
+  .form-group {
+    margin-bottom: 16px;
+  }
+
+  /* OJO: no bajar de 16px. Con font-size menor, iOS Safari hace ZOOM
+     automatico al enfocar un input y descuadra toda la pantalla. */
+  .form-input {
+    font-size: 16px;
+    padding: 11px 14px;
+  }
+}
+
+/* --- Moviles estrechos (iPhone SE, Android chicos) ------------------------ */
+@media (max-width: 380px) {
+  .login-card {
+    padding: 22px 16px;
+    border-radius: 18px;
+  }
+
+  .login-logo h1 {
+    font-size: 1.35rem;
+  }
+
+  .auth-tab {
+    font-size: 0.8rem;
+    padding: 9px 6px;
+  }
+
+  .pwd-rules {
+    padding: 8px 10px;
+  }
+
+  .pwd-rule {
+    font-size: 0.74rem;
+  }
+}
+
+/* --- Pantallas BAJAS: movil en horizontal, o con el teclado abierto -------
+   Aqui el enemigo es el alto, no el ancho: encogemos el logo y los margenes
+   para que el formulario de registro quepa sin pelear con el scroll. */
+@media (max-height: 720px) {
+  .login-logo {
+    margin-bottom: 18px;
+  }
+
+  .login-logo img {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 8px;
+  }
+
+  .login-logo p {
+    display: none;           /* el subtitulo es prescindible si falta alto */
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .auth-tabs {
+    margin-bottom: 16px;
+  }
+}
+
+/* En pantallas MUY bajas (horizontal puro) la tarjeta se pega arriba: centrarla
+   solo obligaria a hacer scroll hacia arriba para ver el logo. */
+@media (max-height: 520px) {
+  .login-card {
+    margin: 0 auto;
+    padding: 18px 20px;
+  }
+
+  .login-logo h1 {
+    font-size: 1.25rem;
+  }
 }
 
 .form-group {
