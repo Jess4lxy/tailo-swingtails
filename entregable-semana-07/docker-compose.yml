@@ -1,0 +1,113 @@
+# =============================================================================
+# docker-compose.yml - orquestacion completa de Tailo (entregable semana 06).
+#
+# Levanta TODA la solucion con un solo comando:  docker compose up --build
+#
+#   [ movil 4G ] --tunel--> [ frontend :8080 (nginx) ] --proxy--> [ backend :8000 ]
+#                                                                       |
+#                                            host.docker.internal:11434 v
+#                                                          [ Ollama nativo + GPU ]
+#
+# ARQUITECTURA HIBRIDA (permitida por la rubrica):
+#   - Ollama corre NATIVO en el host (para usar la GPU); NO se dockeriza.
+#   - No hay contenedor 'database': se usa SQLite persistido en VOLUMENES.
+#   - El backend alcanza Ollama por el puente de red de Docker
+#     (host.docker.internal), configurado con la variable OLLAMA_HOST.
+#
+# Requisitos del host: Docker Desktop + Ollama corriendo con el modelo
+# 'tailo-agent' (verifica con: ollama list).
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # BACKEND - API del agente (FastAPI/uvicorn): RAG + Function Calling +
+  # guardrails + observabilidad + voz (Whisper). Es el contenedor OBLIGATORIO.
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tailo-backend:semana07
+    # Credenciales y config base desde el .env (NO se hornean en la imagen).
+    env_file:
+      - .env
+    environment:
+      # Motor de inferencia en el HOST (config hibrida). Esta variable SOBREESCRIBE
+      # la del .env, que dentro del contenedor apuntaria a si mismo.
+      OLLAMA_HOST: "http://host.docker.internal:11434"
+      # CORS permisivo: como el front va por el mismo origen (nginx) casi no
+      # aplica, pero lo dejamos abierto para pegarle directo a la API en pruebas.
+      TAILO_CORS_ORIGINS: "*"
+      # Rutas de persistencia dentro del contenedor (coinciden con los volumenes).
+      TAILO_OBSERVABILITY_DB: "/app/data/observability.db"
+      TAILO_SESSIONS_DB: "/app/data/sessions.db"
+      # BD de estres de la semana 07 (>=50k citas). Vive en el MISMO volumen
+      # 'tailo-data', asi el sembrado sobrevive a reinicios. Se siembra con:
+      #   docker compose exec backend python seed_stress.py --target 50000 --reset
+      TAILO_STRESS_DB: "/app/data/stress.db"
+      # Cache de modelos de Whisper (y del reranker bge, si se instala).
+      HF_HOME: "/models"
+    # En Docker Desktop (Windows/Mac) 'host.docker.internal' YA resuelve al host
+    # de forma nativa (IPv4). En Linux nativo, descomenta extra_hosts:
+    #   extra_hosts:
+    #     - "host.docker.internal:host-gateway"
+    volumes:
+      # Persistencia (rubrica: la BD de observabilidad NO debe inicializarse en
+      # blanco al reiniciar). La 1a vez, el volumen se SIEMBRA con el contenido
+      # que la imagen trae en esas rutas.
+      - tailo-data:/app/data          # observability.db + sessions.db (SQLite)
+      - tailo-chroma:/app/chroma_db   # base vectorial RAG ya ingestada
+      - tailo-models:/models          # cache del modelo Whisper 'small'
+    # Hace que 'host.docker.internal' resuelva al host tambien en Linux
+    # (en Docker Desktop Win/Mac ya funciona de fabrica).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Puerto expuesto al host por si quieres pegarle directo a la API (Postman).
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # FRONTEND - nginx que sirve la SPA de Vue y hace de reverse proxy a la API.
+  # El tunel (Cloudflare/Ngrok) apunta a ESTE puerto (:8080) y expone TODA la
+  # app (web + API) con una sola URL publica de mismo origen.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: tailo-frontend:semana07
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # NGROK - tunel inverso que expone el BACKEND (API) a Internet con tu DOMINIO
+  # ESTATICO (URL fija). Arquitectura HIBRIDA: el frontend vive en Render (nube)
+  # y le pega a esta URL publica del backend local (por eso el tunel apunta al
+  # backend, no al frontend; ver nota de la rubrica sobre Vercel/Render).
+  #
+  # Apunta a 'backend:8000' por la red interna de Docker (NO a localhost). El
+  # token y el dominio se leen del .env (NGROK_AUTHTOKEN / NGROK_DOMAIN).
+  # El log de peticiones se ve con:  docker compose logs -f ngrok
+  # ---------------------------------------------------------------------------
+  ngrok:
+    image: ngrok/ngrok:latest
+    depends_on:
+      - backend
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    command: >
+      http
+      --url=https://${NGROK_DOMAIN}
+      backend:8000
+    restart: unless-stopped
+
+# Volumenes nombrados gestionados por Docker: los datos sobreviven a
+# 'docker compose down' y a reinicios del equipo.
+volumes:
+  tailo-data:
+  tailo-chroma:
+  tailo-models:

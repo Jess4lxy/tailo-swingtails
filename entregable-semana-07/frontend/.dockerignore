@@ -1,0 +1,7 @@
+# Contexto de build del FRONTEND. Excluimos dependencias y builds locales: se
+# regeneran dentro de la imagen con 'npm ci' + 'npm run build'.
+node_modules/
+dist/
+.git/
+*.log
+.DS_Store

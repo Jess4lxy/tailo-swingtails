@@ -22,8 +22,12 @@ entregable-semana-02/evaluacion/ragas_results.json
 
 # Memoria de sesiones + bitacora de observabilidad (SQLite de runtime, se
 # regeneran al conversar). data/ contiene sessions.db y observability.db.
+# En la semana 07 tambien vive ahi stress.db (BD de estres, se regenera con
+# seed_stress.py) y seed_report.txt.
 entregable-semana-04/data/
 entregable-semana-05/data/
+entregable-semana-06/data/
+entregable-semana-07/data/
 
 # =============================================================================
 # Secretos y entornos locales

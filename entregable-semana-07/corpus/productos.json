@@ -1,0 +1,222 @@
+[
+  {
+    "id": "PRD-001",
+    "nombre": "Royal Canin Maxi Adult",
+    "categoria": "alimento seco",
+    "especie": "perro",
+    "etapa": "adulto",
+    "tamano": "grande",
+    "presentacion": "15 kg",
+    "precio_mxn": 1490,
+    "descripcion": "Croqueta para perros adultos de razas grandes (26 a 44 kg). Formulada con proteina de pollo, condroprotectores (glucosamina y condroitina) y omega 3 para apoyar la salud articular. Recomendada a partir de los 15 meses de edad."
+  },
+  {
+    "id": "PRD-002",
+    "nombre": "Hill's Science Diet Kitten",
+    "categoria": "alimento seco",
+    "especie": "gato",
+    "etapa": "cachorro",
+    "tamano": "pequeno",
+    "presentacion": "3.2 kg",
+    "precio_mxn": 1190,
+    "descripcion": "Alimento para gatitos de hasta 12 meses. Alta densidad calorica, DHA para desarrollo cerebral y antioxidantes para sistema inmune en desarrollo. Tambien indicado para gatas gestantes y lactantes."
+  },
+  {
+    "id": "PRD-003",
+    "nombre": "Pro Plan Veterinary Diets Renal RF",
+    "categoria": "alimento prescripcion",
+    "especie": "gato",
+    "etapa": "senior",
+    "tamano": "pequeno",
+    "presentacion": "1.5 kg",
+    "precio_mxn": 890,
+    "descripcion": "Dieta veterinaria para gatos con enfermedad renal cronica. Bajo en fosforo y proteina restringida de alta calidad. Requiere prescripcion veterinaria. No sustituye el tratamiento medico, solo lo complementa."
+  },
+  {
+    "id": "PRD-004",
+    "nombre": "Bravecto Plus para Gatos 1.2-2.8 kg",
+    "categoria": "antiparasitario",
+    "especie": "gato",
+    "etapa": "adulto",
+    "tamano": "pequeno",
+    "presentacion": "1 pipeta",
+    "precio_mxn": 650,
+    "descripcion": "Antiparasitario topico de amplio espectro: pulgas, garrapatas, gusano del corazon y endoparasitos. Duracion 2 meses. Solo bajo recomendacion veterinaria. No usar en gatitos menores a 9 semanas."
+  },
+  {
+    "id": "PRD-005",
+    "nombre": "Kong Classic Talla M",
+    "categoria": "juguete",
+    "especie": "perro",
+    "etapa": "todos",
+    "tamano": "mediano",
+    "presentacion": "1 pieza",
+    "precio_mxn": 320,
+    "descripcion": "Juguete de caucho natural rellenable. Ideal para masticadores moderados, enriquecimiento ambiental y reduccion de ansiedad por separacion. Apto para perros de 7 a 16 kg."
+  },
+  {
+    "id": "PRD-006",
+    "nombre": "Arena Aglutinante Ever Clean Extra Strong",
+    "categoria": "accesorio higiene",
+    "especie": "gato",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "11.3 kg",
+    "precio_mxn": 590,
+    "descripcion": "Arena de bentonita con carbon activado. Control de olor superior y bajo polvo. Forma grumos firmes para facilitar la limpieza diaria del arenero."
+  },
+  {
+    "id": "PRD-007",
+    "nombre": "Collar antipulgas Seresto Perro grande",
+    "categoria": "antiparasitario",
+    "especie": "perro",
+    "etapa": "adulto",
+    "tamano": "grande",
+    "presentacion": "1 collar 70 cm",
+    "precio_mxn": 980,
+    "descripcion": "Collar liberador prolongado contra pulgas y garrapatas. Duracion 8 meses. Resistente al agua. Recomendado para perros mayores a 8 kg y a partir de 7 semanas de edad."
+  },
+  {
+    "id": "PRD-008",
+    "nombre": "Suplemento Cosequin DS Plus MSM",
+    "categoria": "suplemento",
+    "especie": "perro",
+    "etapa": "senior",
+    "tamano": "todos",
+    "presentacion": "60 tabletas",
+    "precio_mxn": 1290,
+    "descripcion": "Condroprotector con glucosamina, condroitina y MSM. Apoyo a la salud articular en perros con artrosis incipiente o perros activos. Uso continuo recomendado bajo supervision veterinaria."
+  },
+  {
+    "id": "PRD-009",
+    "nombre": "Transportadora IATA Petmate Sky Kennel",
+    "categoria": "accesorio viaje",
+    "especie": "perro",
+    "etapa": "todos",
+    "tamano": "mediano",
+    "presentacion": "1 pieza 71 cm",
+    "precio_mxn": 2390,
+    "descripcion": "Transportadora rigida aprobada por IATA para vuelos comerciales. Apta para perros de hasta 14 kg. Incluye dispensador de comida y agua, etiquetas y tornilleria metalica."
+  },
+  {
+    "id": "PRD-010",
+    "nombre": "Shampoo Virbac Episoothe Avena Coloidal",
+    "categoria": "higiene",
+    "especie": "perro",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "250 ml",
+    "precio_mxn": 320,
+    "descripcion": "Shampoo dermatologico con avena coloidal para pieles sensibles, irritadas o con prurito leve. No contiene jabon ni colorantes. Apto como coadyuvante en dermatitis alergica."
+  },
+  {
+    "id": "PRD-011",
+    "nombre": "Cama ortopedica Memory Foam Talla L",
+    "categoria": "descanso",
+    "especie": "perro",
+    "etapa": "senior",
+    "tamano": "grande",
+    "presentacion": "1 pieza 100x70 cm",
+    "precio_mxn": 1790,
+    "descripcion": "Cama de espuma viscoelastica con funda lavable. Recomendada para perros senior, posoperatorios o con displasia de cadera. Distribuye el peso y reduce puntos de presion."
+  },
+  {
+    "id": "PRD-012",
+    "nombre": "Probiotico FortiFlora Purina Sobres",
+    "categoria": "suplemento",
+    "especie": "perro",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "30 sobres",
+    "precio_mxn": 690,
+    "descripcion": "Probiotico con Enterococcus faecium SF68. Apoyo en cuadros de diarrea aguda, cambios de dieta o estres. Tambien existe presentacion para gato. Uso de 7 a 14 dias o segun veterinario."
+  },
+  {
+    "id": "PRD-013",
+    "nombre": "Fuente de agua PetSafe Drinkwell 360",
+    "categoria": "accesorio",
+    "especie": "gato",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "3.8 L",
+    "precio_mxn": 1490,
+    "descripcion": "Fuente de agua con flujo continuo y filtro de carbon. Estimula la ingesta de agua en gatos, util en prevencion de enfermedad de tracto urinario inferior felino (FLUTD)."
+  },
+  {
+    "id": "PRD-014",
+    "nombre": "Pasta dental enzimatica Virbac CET Pollo",
+    "categoria": "higiene",
+    "especie": "perro",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "70 g",
+    "precio_mxn": 290,
+    "descripcion": "Pasta dental con sistema enzimatico, sin necesidad de enjuague. Sabor pollo. Para uso diario con cepillo o dedal. No usar pasta dental humana en mascotas (contiene fluor y xylitol toxicos)."
+  },
+  {
+    "id": "PRD-015",
+    "nombre": "Arnes H Julius-K9 IDC Talla 2",
+    "categoria": "paseo",
+    "especie": "perro",
+    "etapa": "adulto",
+    "tamano": "mediano",
+    "presentacion": "1 pieza",
+    "precio_mxn": 990,
+    "descripcion": "Arnes ergonomico con asa de sujecion. Distribuye la presion en el pecho y no en cuello. Recomendado para perros que jalan o con problemas traqueales. Reflejante nocturno."
+  },
+  {
+    "id": "PRD-016",
+    "nombre": "Snack dental Greenies Regular",
+    "categoria": "snack",
+    "especie": "perro",
+    "etapa": "adulto",
+    "tamano": "mediano",
+    "presentacion": "340 g",
+    "precio_mxn": 420,
+    "descripcion": "Premio dental masticable. Reduce placa y sarro con uso diario. Aceptado por el Veterinary Oral Health Council (VOHC). Una pieza al dia segun el peso indicado."
+  },
+  {
+    "id": "PRD-017",
+    "nombre": "Alimento humedo Whiskas Pouch Atun",
+    "categoria": "alimento humedo",
+    "especie": "gato",
+    "etapa": "adulto",
+    "tamano": "todos",
+    "presentacion": "85 g x 24 sobres",
+    "precio_mxn": 480,
+    "descripcion": "Alimento humedo completo en trozos con salsa. Sabor atun. Aporta hidratacion adicional, util en gatos con baja ingesta de agua. Combinar con croqueta seca para balance dental."
+  },
+  {
+    "id": "PRD-018",
+    "nombre": "Rascador Vesper V-High Cat Tower",
+    "categoria": "enriquecimiento",
+    "especie": "gato",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "1 pieza 164 cm",
+    "precio_mxn": 4290,
+    "descripcion": "Torre rascadora de madera maciza con plataformas y cojines. Sisal natural. Indispensable para conducta normal de rascado, evita dano en muebles y reduce estres."
+  },
+  {
+    "id": "PRD-019",
+    "nombre": "Termometro digital veterinario rectal",
+    "categoria": "primeros auxilios",
+    "especie": "todas",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "1 pieza",
+    "precio_mxn": 240,
+    "descripcion": "Termometro digital con punta flexible. Rango normal de temperatura corporal: perro 38.0-39.2 C, gato 38.0-39.2 C. Fiebre por arriba de 39.5 C requiere valoracion veterinaria."
+  },
+  {
+    "id": "PRD-020",
+    "nombre": "Botiquin de primeros auxilios para mascotas",
+    "categoria": "primeros auxilios",
+    "especie": "todas",
+    "etapa": "todos",
+    "tamano": "todos",
+    "presentacion": "1 kit",
+    "precio_mxn": 690,
+    "descripcion": "Incluye gasas, vendas autoadhesivas, solucion salina, clorhexidina, pinzas, guantes y manta termica. No incluye medicamentos. Para estabilizar mientras se traslada al veterinario."
+  }
+]

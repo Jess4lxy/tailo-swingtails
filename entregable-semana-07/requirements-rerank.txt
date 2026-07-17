@@ -1,0 +1,34 @@
+# Tailo Agent - Re-ranker local (Entregable Semana 07 - Fase B, Advanced RAG)
+# =============================================================================
+# Dependencia OPCIONAL y PESADA (igual que la voz en requirements-voice.txt):
+# el Cross-Encoder bge-reranker-v2-m3 corre sobre sentence-transformers + torch.
+# Se instala APARTE para no forzar ~2 GB de dependencias a quien solo quiere la
+# API basica. Si NO se instala, el pipeline de retrieve degrada con gracia a
+# solo-RRF (busqueda hibrida sin re-rankeo); el backend NO se cae.
+#
+# Instalacion:
+#   pip install -r requirements-rerank.txt
+#
+# La PRIMERA ejecucion descarga el modelo (~600 MB) desde HuggingFace. Corre en
+# CPU (config.RERANKER_DEVICE=cpu) para NO competir por la VRAM de Llama.
+# Para GPU: instala el torch con CUDA adecuado y exporta TAILO_RERANKER_DEVICE=cuda.
+# =============================================================================
+
+sentence-transformers==3.3.1
+
+# PINES OBLIGATORIOS (no los sueltes: hay dos conflictos reales) --------------
+#
+# 1) transformers: sentence-transformers 3.3.1 NO carga con transformers >=4.50
+#    (falla con "cannot import name 'GenerationMixin' from
+#    transformers.generation"). 4.46.3 es la ultima serie compatible.
+transformers==4.46.3
+#
+# 2) scipy / scikit-learn: sentence-transformers los arrastra, y sus versiones
+#    nuevas (scipy >=1.14) EXIGEN NumPy 2.x. Pero chromadb 0.5.5 exige NumPy
+#    <2 (ver requirements.txt). Estas son las ultimas que funcionan con NumPy
+#    1.26 y evitan el choque de ABI.
+scipy==1.13.1
+scikit-learn==1.5.2
+
+# torch lo resuelve sentence-transformers; si necesitas fijar la rueda CPU:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu

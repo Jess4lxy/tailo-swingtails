@@ -1,0 +1,30 @@
+# Contexto de build del BACKEND (raiz del entregable). Excluimos lo pesado o
+# irrelevante para que la imagen sea reproducible y liviana.
+
+# Entorno virtual local (476 MB): se reinstala dentro de la imagen.
+.venv/
+
+# Estado de runtime: sessions.db, observability.db, stress.db (BD de estres de
+# la semana 07, ~15 MB) y reportes. NO viaja a la imagen: vive en el volumen
+# 'tailo-data' y se genera dentro del contenedor (init_db / seed_stress.py).
+# Ademas data/ esta en .gitignore, asi que en un clon limpio NO existe: si el
+# Dockerfile intentara copiarla, el build fallaria.
+data/
+*.pdf
+
+# El frontend tiene su PROPIO contexto de build (./frontend) -> no lo mandamos
+# al contexto del backend.
+frontend/
+
+# Cache de Python / artefactos.
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Git y utilidades que no hacen falta en la imagen del backend.
+.git/
+*.postman_collection.json
+setup.ps1
+serve-*.ps1
+docker-*.ps1
