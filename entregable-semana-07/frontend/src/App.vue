@@ -9,7 +9,75 @@
           <p>Asistente Veterinario Inteligente Local</p>
         </div>
 
-        <form @submit.prevent="handleLogin">
+        <!-- Selector Iniciar sesión / Crear cuenta -->
+        <div class="auth-tabs">
+          <button
+            type="button"
+            :class="['auth-tab', { active: authMode === 'login' }]"
+            @click="switchAuthMode('login')"
+          >
+            Iniciar sesión
+          </button>
+          <button
+            type="button"
+            :class="['auth-tab', { active: authMode === 'register' }]"
+            @click="switchAuthMode('register')"
+          >
+            Crear cuenta
+          </button>
+        </div>
+
+        <!-- ============ REGISTRO ============ -->
+        <form v-if="authMode === 'register'" @submit.prevent="handleRegister">
+          <div class="form-group">
+            <label>Nombre completo</label>
+            <input v-model="regName" type="text" class="form-input" placeholder="Ana López" required />
+          </div>
+
+          <div class="form-group">
+            <label>Correo Electrónico</label>
+            <input v-model="regEmail" type="email" class="form-input" placeholder="ejemplo@correo.com" required />
+          </div>
+
+          <div class="form-group">
+            <label>Teléfono <span style="color: var(--text-muted); font-weight: 400;">(opcional)</span></label>
+            <input v-model="regPhone" type="tel" class="form-input" placeholder="9991234567" />
+          </div>
+
+          <div class="form-group">
+            <label>Contraseña</label>
+            <input v-model="regPassword" type="password" class="form-input" placeholder="Mínimo 8 caracteres" required />
+          </div>
+
+          <div class="form-group">
+            <label>Confirmar contraseña</label>
+            <input v-model="regPassword2" type="password" class="form-input" placeholder="••••••••" required />
+          </div>
+
+          <div v-if="registerError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
+            {{ registerError }}
+          </div>
+
+          <button type="submit" class="btn-primary" :disabled="registerLoading">
+            <template v-if="registerLoading">
+              <svg class="spinner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                <path d="M4 12a8 8 0 0 1 8-8V4C5.37 4 0 9.37 0 16h4z" fill="currentColor"></path>
+              </svg>
+              Creando tu cuenta...
+            </template>
+            <template v-else>
+              Crear cuenta y entrar
+            </template>
+          </button>
+
+          <p class="auth-hint">
+            Al crear tu cuenta podrás usar a Tailo para registrar tus mascotas y agendar citas.
+          </p>
+        </form>
+
+        <!-- ============ LOGIN ============ -->
+        <form v-else @submit.prevent="handleLogin">
           <div class="form-group">
             <label>Correo Electrónico (SwingTails)</label>
             <input 
@@ -500,8 +568,27 @@ export default {
       //   3) el mismo origen (modo dockerizado: nginx sirve web + proxy a la API).
       backendUrl: localStorage.getItem('swingtails_backend_url') || import.meta.env.VITE_BACKEND_URL || window.location.origin,
 
+      // API publica de SwingTails: el login y el REGISTRO van DIRECTO contra
+      // ella (no pasan por el backend del agente, que solo consume el JWT).
+      apiBase: 'https://swingtails-api-yz02.onrender.com',
+
+      // Pantalla de acceso: 'login' | 'register'. El registro se agrego para
+      // que gente externa pueda crear su cuenta y probar el agente sin
+      // depender de credenciales prestadas.
+      authMode: 'login',
+
       email: '',
       password: '',
+
+      // Formulario de registro (POST /api/auth/register: name, email y password
+      // son obligatorios; phone_number es opcional).
+      regName: '',
+      regEmail: '',
+      regPhone: '',
+      regPassword: '',
+      regPassword2: '',
+      registerLoading: false,
+      registerError: '',
       // Credenciales guardadas SOLO EN MEMORIA (nunca en localStorage) para el
       // re-login silencioso cuando el access token vence (~30 min) mientras la
       // pestaña sigue abierta. Se pierden al recargar la pagina (a proposito:
@@ -591,12 +678,90 @@ export default {
         this.$refs.inputBox.focus();
       }
     },
+    // Cambia entre "Iniciar sesión" y "Crear cuenta" limpiando los errores del
+    // formulario anterior (si no, el error viejo queda colgado en la otra vista).
+    switchAuthMode(mode) {
+      this.authMode = mode;
+      this.loginError = '';
+      this.registerError = '';
+    },
+
+    // Registro de un usuario NUEVO contra la API de SwingTails.
+    //
+    // Contrato real verificado contra la API (diverge del Swagger):
+    //   POST /api/auth/register  {name, email, password[, phone_number]}
+    //   ok    -> {status:'success', data:{user:{...}}}   <-- NO devuelve token
+    //   error -> {status:'error', message:'El email ya se encuentra registrado'}
+    //
+    // Como no entrega token, tras registrar hacemos LOGIN AUTOMATICO reutilizando
+    // handleLogin(): asi el usuario entra directo al chat sin escribir dos veces
+    // sus datos.
+    async handleRegister() {
+      this.registerError = '';
+
+      // Validaciones locales: barato y evita golpear la API con datos invalidos.
+      if (this.regPassword !== this.regPassword2) {
+        this.registerError = 'Las contraseñas no coinciden.';
+        return;
+      }
+      if (this.regPassword.length < 8) {
+        this.registerError = 'La contraseña debe tener al menos 8 caracteres.';
+        return;
+      }
+      if (!this.regName.trim()) {
+        this.registerError = 'Escribe tu nombre completo.';
+        return;
+      }
+
+      this.registerLoading = true;
+      try {
+        const body = {
+          name: this.regName.trim(),
+          email: this.regEmail.trim(),
+          password: this.regPassword
+        };
+        if (this.regPhone.trim()) body.phone_number = this.regPhone.trim();
+
+        const response = await fetch(`${this.apiBase}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const resData = await response.json();
+        if (!response.ok || resData.status === 'error') {
+          throw new Error(resData.message || 'No se pudo crear la cuenta.');
+        }
+
+        // Cuenta creada -> login automatico con las mismas credenciales.
+        this.email = body.email;
+        this.password = this.regPassword;
+        await this.handleLogin();
+
+        if (this.isLoggedIn) {
+          // Limpiamos el formulario (la contraseña no se queda en memoria).
+          this.regName = this.regEmail = this.regPhone = '';
+          this.regPassword = this.regPassword2 = '';
+        } else {
+          // La cuenta SI se creo, pero el login automatico fallo (p.ej. la API
+          // tardo o el token no llego). No es un fallo del registro: mandamos al
+          // usuario a la pestaña de login con su correo ya puesto.
+          this.authMode = 'login';
+          this.loginError = 'Tu cuenta se creó correctamente. Inicia sesión para continuar.';
+        }
+      } catch (err) {
+        this.registerError = err.message;
+      } finally {
+        this.registerLoading = false;
+      }
+    },
+
     // Authentication handlers
     async handleLogin() {
       this.loginLoading = true;
       this.loginError = '';
       try {
-        const response = await fetch('https://swingtails-api-yz02.onrender.com/api/auth/login', {
+        const response = await fetch(`${this.apiBase}/api/auth/login`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -746,7 +911,7 @@ export default {
     async silentReauth() {
       if (!this.savedEmail || !this.savedPassword) return false;
       try {
-        const response = await fetch('https://swingtails-api-yz02.onrender.com/api/auth/login', {
+        const response = await fetch(`${this.apiBase}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: this.savedEmail, password: this.savedPassword })

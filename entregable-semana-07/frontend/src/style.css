@@ -203,6 +203,50 @@ body {
   margin-top: 6px;
 }
 
+/* Selector "Iniciar sesión" / "Crear cuenta" de la pantalla de acceso.
+   Se agrego al abrir el agente a usuarios externos, que necesitan poder
+   crear su propia cuenta de SwingTails desde aqui. */
+.auth-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.auth-tab:hover {
+  color: var(--text-primary);
+}
+
+.auth-tab.active {
+  background: var(--accent-gradient);
+  color: #fff;
+}
+
+.auth-hint {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 .form-group {
   margin-bottom: 20px;
 }
