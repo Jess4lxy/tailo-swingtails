@@ -247,6 +247,56 @@ body {
   line-height: 1.5;
 }
 
+/* Error por campo del formulario de registro. */
+.field-error {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #e74c3c;
+}
+
+/* Marca el input cuyo valor no es valido (solo tras el blur). */
+.form-input.invalid {
+  border-color: #e74c3c;
+}
+
+.form-input.invalid:focus {
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+}
+
+/* Checklist EN VIVO de los requisitos de la contraseña: cada regla se pinta en
+   verde al cumplirse. Le dice al usuario QUE le falta, porque la API solo
+   responde un generico "no cumple con los requisitos de seguridad". */
+.pwd-rules {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.pwd-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  transition: var(--transition-fast);
+}
+
+.pwd-rule-icon {
+  width: 14px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.pwd-rule.ok {
+  color: #2ecc71;
+}
+
 .form-group {
   margin-bottom: 20px;
 }

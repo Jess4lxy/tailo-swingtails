@@ -31,34 +31,89 @@
         <form v-if="authMode === 'register'" @submit.prevent="handleRegister">
           <div class="form-group">
             <label>Nombre completo</label>
-            <input v-model="regName" type="text" class="form-input" placeholder="Ana López" required />
+            <input
+              v-model="regName"
+              type="text"
+              :class="['form-input', { invalid: touched.name && !nameValid }]"
+              placeholder="Ana López"
+              @blur="touched.name = true"
+            />
+            <p v-if="touched.name && !nameValid" class="field-error">
+              Escribe tu nombre (mínimo 3 caracteres).
+            </p>
           </div>
 
           <div class="form-group">
             <label>Correo Electrónico</label>
-            <input v-model="regEmail" type="email" class="form-input" placeholder="ejemplo@correo.com" required />
+            <input
+              v-model="regEmail"
+              type="email"
+              :class="['form-input', { invalid: touched.email && !emailValid }]"
+              placeholder="ejemplo@correo.com"
+              @blur="touched.email = true"
+            />
+            <p v-if="touched.email && !emailValid" class="field-error">
+              Escribe un correo válido (ejemplo: nombre@correo.com).
+            </p>
           </div>
 
           <div class="form-group">
             <label>Teléfono <span style="color: var(--text-muted); font-weight: 400;">(opcional)</span></label>
-            <input v-model="regPhone" type="tel" class="form-input" placeholder="9991234567" />
+            <input
+              v-model="regPhone"
+              type="tel"
+              inputmode="numeric"
+              maxlength="10"
+              :class="['form-input', { invalid: touched.phone && !phoneValid }]"
+              placeholder="9991234567"
+              @blur="touched.phone = true"
+            />
+            <p v-if="touched.phone && !phoneValid" class="field-error">
+              El teléfono debe tener 10 dígitos (o déjalo vacío).
+            </p>
           </div>
 
           <div class="form-group">
             <label>Contraseña</label>
-            <input v-model="regPassword" type="password" class="form-input" placeholder="Mínimo 8 caracteres" required />
+            <input
+              v-model="regPassword"
+              type="password"
+              :class="['form-input', { invalid: touched.password && !passwordValid }]"
+              placeholder="••••••••"
+              @blur="touched.password = true"
+            />
+
+            <!-- Requisitos EN VIVO: se marcan en verde conforme se cumplen. Son
+                 exactamente los que exige la API de SwingTails (su mensaje de
+                 error es generico: "no cumple con los requisitos de seguridad",
+                 asi que aqui le decimos al usuario QUE le falta). -->
+            <ul v-if="regPassword || touched.password" class="pwd-rules">
+              <li v-for="(rule, i) in passwordChecks" :key="i" :class="['pwd-rule', { ok: rule.ok }]">
+                <span class="pwd-rule-icon">{{ rule.ok ? '✓' : '○' }}</span>
+                {{ rule.label }}
+              </li>
+            </ul>
           </div>
 
           <div class="form-group">
             <label>Confirmar contraseña</label>
-            <input v-model="regPassword2" type="password" class="form-input" placeholder="••••••••" required />
+            <input
+              v-model="regPassword2"
+              type="password"
+              :class="['form-input', { invalid: touched.password2 && !passwordsMatch }]"
+              placeholder="••••••••"
+              @blur="touched.password2 = true"
+            />
+            <p v-if="touched.password2 && !passwordsMatch" class="field-error">
+              Las contraseñas no coinciden.
+            </p>
           </div>
 
           <div v-if="registerError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
             {{ registerError }}
           </div>
 
-          <button type="submit" class="btn-primary" :disabled="registerLoading">
+          <button type="submit" class="btn-primary" :disabled="registerLoading || !registerFormValid">
             <template v-if="registerLoading">
               <svg class="spinner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                 <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
@@ -589,6 +644,9 @@ export default {
       regPassword2: '',
       registerLoading: false,
       registerError: '',
+      // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
+      // Asi el formulario no aparece en rojo desde el primer segundo.
+      touched: { name: false, email: false, phone: false, password: false, password2: false },
       // Credenciales guardadas SOLO EN MEMORIA (nunca en localStorage) para el
       // re-login silencioso cuando el access token vence (~30 min) mientras la
       // pestaña sigue abierta. Se pierden al recargar la pagina (a proposito:
@@ -633,6 +691,50 @@ export default {
     };
   },
   computed: {
+    // --- Validaciones del registro -----------------------------------------
+    // Los requisitos de la contraseña se verificaron EMPIRICAMENTE contra la
+    // API de SwingTails (su respuesta es generica: "La contraseña no cumple con
+    // los requisitos de seguridad", sin decir cual falta). Comprobado:
+    //   'Passw1!'    (7 chars, todas las clases) -> RECHAZADA  => minimo 8
+    //   'Passwo1!'   (8 chars, todas las clases) -> ACEPTADA
+    //   'Testing123' (sin simbolo)               -> RECHAZADA
+    //   'testing12!' (sin mayuscula)             -> RECHAZADA
+    //   'TESTING12!' (sin minuscula)             -> RECHAZADA
+    //   'TestingAb!' (sin numero)                -> RECHAZADA
+    // Validamos aqui lo mismo para decirle al usuario QUE le falta, en vez de
+    // mandarlo a la API a que le rebote un mensaje que no explica nada.
+    passwordChecks() {
+      const p = this.regPassword || '';
+      return [
+        { ok: p.length >= 8, label: 'Al menos 8 caracteres' },
+        { ok: /[A-Z]/.test(p), label: 'Una letra mayúscula (A-Z)' },
+        { ok: /[a-z]/.test(p), label: 'Una letra minúscula (a-z)' },
+        { ok: /[0-9]/.test(p), label: 'Un número (0-9)' },
+        { ok: /[^A-Za-z0-9]/.test(p), label: 'Un símbolo (! @ # $ % & ...)' }
+      ];
+    },
+    passwordValid() {
+      return this.passwordChecks.every(r => r.ok);
+    },
+    passwordsMatch() {
+      return !!this.regPassword && this.regPassword === this.regPassword2;
+    },
+    nameValid() {
+      return this.regName.trim().length >= 3;
+    },
+    emailValid() {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(this.regEmail.trim());
+    },
+    // El telefono es OPCIONAL: vacio es valido; si se escribe, 10 digitos.
+    phoneValid() {
+      const t = this.regPhone.trim();
+      return !t || /^\d{10}$/.test(t);
+    },
+    registerFormValid() {
+      return this.nameValid && this.emailValid && this.phoneValid
+        && this.passwordValid && this.passwordsMatch;
+    },
+
     userNameLetter() {
       if (this.currentUser && this.currentUser.name) {
         return String(this.currentUser.name).charAt(0).toUpperCase();
@@ -684,6 +786,8 @@ export default {
       this.authMode = mode;
       this.loginError = '';
       this.registerError = '';
+      // Reinicia los "tocados": al volver al registro no debe aparecer en rojo.
+      Object.keys(this.touched).forEach(k => { this.touched[k] = false; });
     },
 
     // Registro de un usuario NUEVO contra la API de SwingTails.
@@ -699,17 +803,11 @@ export default {
     async handleRegister() {
       this.registerError = '';
 
-      // Validaciones locales: barato y evita golpear la API con datos invalidos.
-      if (this.regPassword !== this.regPassword2) {
-        this.registerError = 'Las contraseñas no coinciden.';
-        return;
-      }
-      if (this.regPassword.length < 8) {
-        this.registerError = 'La contraseña debe tener al menos 8 caracteres.';
-        return;
-      }
-      if (!this.regName.trim()) {
-        this.registerError = 'Escribe tu nombre completo.';
+      // Red de seguridad: el boton ya esta deshabilitado si el formulario no es
+      // valido, pero si alguien envia con Enter marcamos todo como "tocado"
+      // para que se vean los errores de cada campo.
+      if (!this.registerFormValid) {
+        Object.keys(this.touched).forEach(k => { this.touched[k] = true; });
         return;
       }
 
@@ -730,7 +828,17 @@ export default {
 
         const resData = await response.json();
         if (!response.ok || resData.status === 'error') {
-          throw new Error(resData.message || 'No se pudo crear la cuenta.');
+          const apiMsg = resData.message || 'No se pudo crear la cuenta.';
+          // La API responde un generico "no cumple con los requisitos de
+          // seguridad" sin decir cual falta. Si llegara aqui (p.ej. si el
+          // backend endurece la regla), enumeramos los requisitos.
+          if (/requisitos de seguridad/i.test(apiMsg)) {
+            throw new Error(
+              'La contraseña no cumple los requisitos: mínimo 8 caracteres, ' +
+              'una mayúscula, una minúscula, un número y un símbolo.'
+            );
+          }
+          throw new Error(apiMsg);
         }
 
         // Cuenta creada -> login automatico con las mismas credenciales.
