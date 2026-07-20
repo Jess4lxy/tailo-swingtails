@@ -263,8 +263,8 @@
             <div class="chat-header-info">
               <span class="chat-header-title">{{ chatTitle }}</span>
               <span class="chat-header-subtitle">
-                <div class="status-dot"></div>
-                Conectado a IA local (Whisper + Llama)
+                <span class="status-dot"></span>
+                <span>Conectado a IA local (Whisper + Llama)</span>
               </span>
             </div>
             <div class="chat-header-actions">

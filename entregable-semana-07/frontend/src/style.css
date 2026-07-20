@@ -52,8 +52,14 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
+  /* 100vh en movil incluye el area BAJO la barra de URL del navegador, asi que
+     el footer del chat (input) quedaba cortado. 100dvh usa el alto REALMENTE
+     visible y se reajusta cuando la barra aparece/desaparece. Dejamos 100vh de
+     fallback para navegadores viejos que no soporten dvh. */
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  width: 100dvw;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -146,6 +152,7 @@ body {
   display: flex;
   width: 100%;
   height: 100vh;
+  height: 100dvh;   /* mismo motivo que en body: footer del chat sin cortar */
   position: relative;
 }
 
@@ -154,15 +161,15 @@ body {
   position: fixed;
   inset: 0;
   background: radial-gradient(circle at center, var(--custom-off-white) 0%, var(--screen-bg) 100%);
-  display: flex;
-  justify-content: center;
-  /* NO usamos align-items:center: con un formulario alto (el registro lleva 5
-     campos + la checklist de la contraseña) el centrado recorta la parte de
-     ARRIBA y esa zona queda inalcanzable al hacer scroll. Con flex-start +
-     `margin:auto` en la tarjeta obtenemos lo mejor de ambos: se centra cuando
-     sobra espacio y se puede desplazar cuando no cabe. */
-  align-items: flex-start;
-  overflow-y: auto;          /* pantallas bajas / teclado abierto / horizontal */
+  /* Centrado con GRID (no flex): a diferencia de flex align-items:center, cuando
+     la tarjeta es MAS ALTA que la pantalla (registro con 5 campos + checklist,
+     o movil en horizontal) grid NO recorta la parte de arriba; con overflow-y
+     auto se puede desplazar y el logo sigue siendo alcanzable. Asi el formulario
+     nunca se corta ni vertical ni horizontalmente. */
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   z-index: 999;
   padding: 20px;
@@ -171,7 +178,6 @@ body {
 .login-card {
   width: 100%;
   max-width: 480px;
-  margin: auto;              /* centra vertical y horizontalmente sin recortar */
   background: var(--bg-glass);
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
@@ -743,11 +749,18 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Ocupa el espacio libre y se ENCOGE si hace falta: sin esto un titulo largo
+     empuja los botones de accion fuera de la pantalla en movil. */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .chat-header-title {
   font-weight: 700;
   font-size: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-header-subtitle {
@@ -756,6 +769,17 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+.chat-header-subtitle span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-header-actions {
+  flex-shrink: 0;   /* los botones nunca se comprimen ni se recortan */
 }
 
 .status-dot {
@@ -764,6 +788,8 @@ body {
   border-radius: 50%;
   background: var(--success-color);
   box-shadow: 0 0 8px var(--success-color);
+  flex-shrink: 0;
+  display: inline-block;
 }
 
 .chat-header-actions {
@@ -936,6 +962,10 @@ body {
   border-radius: 20px;
   font-size: 0.95rem;
   line-height: 1.6;
+  /* Una palabra larga sin espacios (una URL, un folio, un token) rompia la
+     burbuja hacia los lados y forzaba scroll horizontal. Con esto se parte. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .message-row.user .message-bubble {
@@ -1225,7 +1255,12 @@ body {
   background: var(--bg-glass);
   border: 1px solid var(--border-glass);
   border-radius: 16px;
-  overflow: hidden;
+  /* La tabla tiene 8 columnas: en movil NO cabe. Antes 'overflow:hidden' la
+     RECORTABA (columnas invisibles e inalcanzables). Con overflow-x auto la
+     tabla se desplaza lateralmente DENTRO de su caja y el resto de la pagina
+     no hace scroll horizontal. */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow-main);
 }
 
@@ -1306,6 +1341,7 @@ body {
     top: 0;
     left: 0;
     height: 100%;
+    height: 100dvh;   /* el footer del drawer (perfil/logout) no queda tapado */
     width: 84%;
     max-width: 320px;
     padding: 0;
@@ -1354,14 +1390,35 @@ body {
 
   /* El main ocupa TODO el ancho: nada empuja el contenido a la derecha */
   .chat-header {
-    padding: 0 12px;
+    height: 60px;
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .chat-header-title {
+    font-size: 0.98rem;
+  }
+  /* Botones de accion mas compactos para que quepan junto al titulo */
+  .chat-header-actions {
     gap: 6px;
   }
-  .chat-header-actions {
-    flex-shrink: 0;
+  .chat-header-actions .btn-header {
+    padding: 7px 9px;
+    font-size: 0.78rem;
+  }
+  .agent-status-overlay {
+    padding: 8px 14px;
+    font-size: 0.8rem;
+    flex-wrap: wrap;   /* si el detalle + la tool no caben, bajan de linea */
   }
   .messages-container {
     padding: 16px 14px;
+    gap: 16px;
+  }
+  /* Burbujas mas anchas: en un movil 75% desperdicia mucho margen */
+  .message-bubble {
+    max-width: 88%;
+    padding: 13px 16px;
+    font-size: 0.92rem;
   }
   .chat-input-area {
     padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
@@ -1369,8 +1426,16 @@ body {
   .welcome-screen {
     padding: 24px 16px;
   }
+  .welcome-screen h3 {
+    font-size: 1.35rem;
+  }
   .welcome-suggestions {
     grid-template-columns: 1fr;
+  }
+  .voice-source-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.75rem;
   }
 
   /* Auditoria */
@@ -1378,11 +1443,49 @@ body {
     padding: 16px 14px;
   }
   .audit-header {
+    flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 10px;
+  }
+  .audit-header h2 {
+    font-size: 1.25rem;
   }
   .audit-stats-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .stat-card {
+    padding: 14px;
+  }
+  .stat-card-value {
+    font-size: 1.3rem;
+  }
+  /* La tabla mantiene un ancho minimo para que se DESPLACE (dentro de su caja)
+     en vez de aplastarse ilegible en pantallas chicas. */
+  .audit-table {
+    min-width: 680px;
+  }
+}
+
+/* --- Moviles estrechos: header en riesgo de desbordar --- */
+@media (max-width: 420px) {
+  /* El subtitulo del chat es prescindible; liberar su espacio evita que el
+     header apriete el titulo y los botones. */
+  .chat-header-subtitle {
+    display: none;
+  }
+  .chat-header-title {
+    font-size: 0.95rem;
+  }
+  .chat-header-actions .btn-header {
+    padding: 6px 8px;
+    font-size: 0.72rem;
+  }
+  .message-bubble {
+    max-width: 92%;
+  }
+  .audit-stats-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
