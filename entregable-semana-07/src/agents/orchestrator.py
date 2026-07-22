@@ -169,6 +169,7 @@ class Orchestrator:
             "ttft_ms": round(result["ttft_ms"], 2) if result.get("ttft_ms") else None,
             "total_latency_ms": round(total_latency, 2),
             "tokens_per_second": round(tps, 2) if tps else None,
+            "needs_location": bool(result.get("needs_location")),
             "blocked": False,
         }
         if result.get("retrieval"):

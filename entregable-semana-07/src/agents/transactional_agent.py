@@ -73,6 +73,10 @@ class TransactionalAgent:
         """Ejecuta el turno transaccional. Yields eventos; devuelve dict final."""
         t_start = time.perf_counter()
         trace: list[dict] = []
+        # True si alguna tool pidio la ubicacion del usuario (find_nearest_clinics
+        # sin coordenadas). El frontend lo usa para solicitar el permiso del
+        # navegador y reintentar, en vez de depender de adivinar por el texto.
+        needs_location = False
 
         messages = (
             [{"role": "system", "content": TRANSACTIONAL_SYSTEM}]
@@ -110,6 +114,8 @@ class TransactionalAgent:
                        "detail": _humanize(name)}
                 result = execute_tool(name, args, registry=_REGISTRY)
                 status = _tool_status(result)
+                if '"necesita_ubicacion"' in result:
+                    needs_location = True
                 trace.append({
                     "name": name,
                     "parameters": args if isinstance(args, dict) else {"_raw": args},
@@ -152,6 +158,7 @@ class TransactionalAgent:
             "context": [json.dumps(t, ensure_ascii=False) for t in trace],
             "sources": [],
             "tools_executed": trace,
+            "needs_location": needs_location,
             "ttft_ms": ttft_ms,
             "eval_count": eval_count,
             "eval_duration": eval_duration,

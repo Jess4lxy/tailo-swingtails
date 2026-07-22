@@ -138,6 +138,7 @@ class ChatResponse(BaseModel):
     turns: int = 0
     compacted: bool = False
     blocked: bool = False
+    needs_location: bool = False    # una tool pidio la ubicacion (el front la solicitara)
     ttft_ms: float | None = None
     total_latency_ms: float | None = None
     tokens_per_second: float | None = None
@@ -290,6 +291,7 @@ def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> 
             turns=done.get("turns", 0),
             compacted=done.get("compacted", False),
             blocked=done.get("blocked", False),
+            needs_location=done.get("needs_location", False),
             ttft_ms=done.get("ttft_ms"),
             total_latency_ms=done.get("total_latency_ms"),
             tokens_per_second=done.get("tokens_per_second"),

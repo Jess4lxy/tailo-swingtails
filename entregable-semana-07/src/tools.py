@@ -747,7 +747,7 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "list_clinics",
-            "description": "Lista clinicas veterinarias registradas.",
+            "description": "Lista las clinicas veterinarias disponibles/registradas (todas). USA ESTA para 'busca clinicas', 'que veterinarias hay', 'clinicas disponibles'. NO requiere ubicacion.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -762,7 +762,7 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "find_nearest_clinics",
-            "description": "Devuelve las veterinarias MAS CERCANAS a la ubicacion del usuario (para 'cerca de mi', 'la mas cercana'). La ubicacion se toma de la sesion (el usuario la comparte desde el navegador); NO la pases tu. Si el usuario no compartio ubicacion, devuelve necesita_ubicacion=true.",
+            "description": "Devuelve las veterinarias MAS CERCANAS por PROXIMIDAD a la ubicacion del usuario. USA ESTA SOLO cuando el usuario pida cercania explicitamente: 'cerca de mi', 'la mas cercana', 'cual me queda mas cerca', 'por mi ubicacion'. Para un listado general usa list_clinics. La ubicacion se toma de la sesion (el usuario la comparte desde el navegador); NO la pases tu. Si el usuario no compartio ubicacion, devuelve necesita_ubicacion=true.",
             "parameters": {
                 "type": "object",
                 "properties": {

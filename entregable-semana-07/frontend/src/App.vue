@@ -685,6 +685,8 @@ export default {
       userLat: null,
       userLon: null,
       geoDenied: false,
+      // Evita reintentar la ubicacion en bucle dentro de un mismo mensaje.
+      locationRetryDone: false,
 
       // Voice Settings
       isRecording: false,
@@ -1184,10 +1186,32 @@ export default {
       });
     },
 
+    // El backend indico que hace falta la ubicacion. Pide el permiso del
+    // navegador y, si se concede, reenvia la misma pregunta con lat/lon.
+    async tryLocationRetry(assistantIndex) {
+      if (this.locationRetryDone || this.geoDenied) return;
+      // Si YA teniamos coordenadas y aun asi pidio ubicacion, no insistir (evita
+      // bucle): es un fallo real, no falta de permiso.
+      if (this.userLat != null && this.userLon != null) return;
+
+      const userMsg = this.messages[assistantIndex - 1];
+      if (!userMsg || userMsg.role !== 'user' || !userMsg.content) return;
+
+      this.locationRetryDone = true;
+      const loc = await this.ensureLocation();   // muestra el prompt del navegador
+      if (loc) {
+        this.inputMessage = userMsg.content;
+        this.sendMessage(true);                   // reintento con coordenadas
+      }
+    },
+
     // Sending messages (SSE integration)
     async sendMessage(isRetry = false) {
       const text = this.inputMessage.trim();
       if (!text || this.isAgentLoading) return;
+
+      // Mensaje nuevo (no un reintento): permite un nuevo intento de ubicacion.
+      if (!isRetry) this.locationRetryDone = false;
 
       // Si el mensaje es de ubicacion y aun no tenemos coordenadas, pedimos el
       // permiso ANTES de enviar (el navegador muestra su prompt nativo). Si el
@@ -1369,6 +1393,15 @@ export default {
           this.$nextTick(() => {
             this.focusInput();
           });
+
+          // El agente necesito la ubicacion (una tool devolvio necesita_ubicacion)
+          // pero no la teniamos: pedimos el permiso al navegador y, si se concede,
+          // reenviamos la MISMA pregunta ya con las coordenadas. Asi el prompt de
+          // ubicacion aparece justo cuando de verdad hace falta, sin depender de
+          // adivinar por el texto del usuario.
+          if (data.needs_location) {
+            this.tryLocationRetry(msgIndex);
+          }
           break;
 
         case 'error':
