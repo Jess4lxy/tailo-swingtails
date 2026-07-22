@@ -124,6 +124,34 @@ class TransactionalAgent:
                 yield {"type": "tool", "name": name, "status": status}
                 messages.append({"role": "tool", "name": name, "content": result})
 
+        # --- Corto-circuito: falta la ubicacion -----------------------------
+        # Si una tool (find_nearest_clinics) pidio la ubicacion y NO la teniamos,
+        # respondemos de forma DETERMINISTA en vez de dejar generar al modelo.
+        # Motivo: el 8B, al ver el "necesita_ubicacion", se confunde y ALUCINA
+        # clinicas y distancias falsas (llego a vomitar un JSON inventado). Con
+        # una respuesta fija evitamos por completo esa alucinacion y damos un
+        # mensaje limpio; el frontend usa needs_location para pedir el permiso y
+        # reintentar automaticamente.
+        if needs_location:
+            reply = (
+                "Para mostrarte las veterinarias más cercanas necesito tu "
+                "ubicación. Acepta el permiso de ubicación que te pedirá el "
+                "navegador y vuelve a preguntarme; con gusto te muestro las más "
+                "cercanas a ti."
+            )
+            yield {"type": "token", "text": reply}
+            return {
+                "reply": reply,
+                "route": "transactional",
+                "context": [json.dumps(t, ensure_ascii=False) for t in trace],
+                "sources": [],
+                "tools_executed": trace,
+                "needs_location": True,
+                "ttft_ms": (time.perf_counter() - t_start) * 1000,
+                "eval_count": None,
+                "eval_duration": None,
+            }
+
         if exhausted:
             messages.append({
                 "role": "tool",
