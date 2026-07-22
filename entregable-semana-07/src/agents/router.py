@@ -60,6 +60,10 @@ _TRANSACTIONAL_KW = re.compile(
     r"|\b(agenda|agendar|agendame|reagenda|cancela|cancelar|registra|registrar|"
     r"actualiza|actualizar|elimina|eliminar|confirma|resen|reseña|resena)\b"
     r"|\bcuantas?\s+citas\b|\bfolio\b|\bmis citas\b|\bmis mascotas\b"
+    # Veterinarias cercanas por ubicacion -> transaccional (usa find_nearest_clinics).
+    r"|\bcercan|\bmas cercan|\bmas proxim|\bcerca de mi|\bmi ubicacion|\bpor mi ubicacion"
+    r"|\b(veterinari|clinica|vet)\w*\b.{0,20}\bcerca"
+    r"|\bcerca\b.{0,20}\b(veterinari|clinica|vet)\w*"
 )
 _RAG_KW = re.compile(
     r"\b(como|que|cual|cuando|cuanto|por que|porque|recomienda|consejo|cuidad|"

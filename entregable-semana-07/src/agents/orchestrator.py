@@ -35,9 +35,11 @@ import time
 
 import ollama
 
+import web_reader
 from config import LLM_MODEL, OLLAMA_HOST, TOP_K
 from guardrails import check_prompt_injection
 from retrieve import Retriever
+from agents.prompts import LENGUAJE
 from agents.rag_agent import RagAgent
 from agents.router import RouterAgent
 from agents.transactional_agent import TransactionalAgent
@@ -51,7 +53,7 @@ class Route:
 
 
 # Prompt minusculo para el turno de charla/capacidades (sin tools, sin RAG).
-_SMALLTALK_SYSTEM = """Eres Tailo, el asistente virtual de SwingTails (app de mascotas). Responde saludos, agradecimientos y preguntas sobre quien eres o que puedes hacer de forma calida y BREVE, en español. Cuando te pregunten en que ayudas, menciona tus areas: consultar, registrar y actualizar mascotas; agendar y gestionar citas veterinarias; ver clinicas y el catalogo de productos; y dar consejos de cuidado, salud y alimentacion. NO llames herramientas ni listes datos de la cuenta del usuario (todavia no te lo han pedido). Termina invitando a decir en que te gustaria ayudar."""
+_SMALLTALK_SYSTEM = """Eres Tailo, el asistente virtual de SwingTails (app de mascotas). Responde saludos, agradecimientos y preguntas sobre quien eres o que puedes hacer de forma calida y BREVE, en español. Cuando te pregunten en que ayudas, menciona tus areas: consultar, registrar y actualizar mascotas; agendar y gestionar citas veterinarias; ver clinicas y el catalogo de productos; y dar consejos de cuidado, salud y alimentacion. NO llames herramientas ni listes datos de la cuenta del usuario (todavia no te lo han pedido). Termina invitando a decir en que te gustaria ayudar.""" + LENGUAJE
 
 
 def _date_prefix() -> str:
@@ -115,24 +117,43 @@ class Orchestrator:
             }
             return
 
-        # --- 2) Ruteo --------------------------------------------------------
+        # --- 2) Lectura de enlaces compartidos por el usuario ----------------
+        # Si el mensaje trae URLs, el backend las descarga y extrae su texto para
+        # inyectarlo al contexto. Asi el agente relaciona el contenido del enlace
+        # con la sesion, en vez de alucinar (antes hasta ofrecia "leerlo" con un
+        # script de Python). El bloque se agrega como un turno de usuario extra,
+        # ANTES del mensaje real, para no contaminar la recuperacion del RAG.
+        urls = web_reader.extract_urls(user_message)
+        web_context: list[dict] = list(context)
+        if urls:
+            yield {"type": "phase", "phase": "searching",
+                   "detail": f"Leyendo {'el enlace' if len(urls) == 1 else 'los enlaces'}…"}
+            web_block, _res = web_reader.read_urls(urls)
+            if web_block:
+                web_context = list(context) + [{"role": "user", "content": web_block}]
+
+        # --- 3) Ruteo --------------------------------------------------------
         yield {"type": "phase", "phase": "routing", "detail": "Analizando tu solicitud…"}
         decision = self._router.route(user_message, history_hint=_history_hint(context))
         route = decision["route"]
+        # Un mensaje con un enlace para revisar es informativo: si el ruteador lo
+        # mando a charla, lo tratamos como RAG para que use el contenido leido.
+        if urls and route == Route.SMALLTALK:
+            route = Route.RAG
         yield {"type": "route", "route": route, "reason": decision.get("reason", ""),
                "method": decision.get("method", "")}
 
-        # --- 3) Delegacion al especialista -----------------------------------
+        # --- 4) Delegacion al especialista -----------------------------------
         if route == Route.TRANSACTIONAL:
             agent = TransactionalAgent(self._client, model=self.model)
-            result = yield from agent.run(context, user_message, date_prefix)
+            result = yield from agent.run(web_context, user_message, date_prefix)
         elif route == Route.SMALLTALK:
-            result = yield from self._run_smalltalk(context, user_message, t_start)
+            result = yield from self._run_smalltalk(web_context, user_message, t_start)
         else:  # RAG (ruta por defecto)
             agent = RagAgent(self._client, self._get_retriever(), model=self.model)
-            result = yield from agent.run(context, user_message, date_prefix)
+            result = yield from agent.run(web_context, user_message, date_prefix)
 
-        # --- 4) Cierre: metricas + done --------------------------------------
+        # --- 5) Cierre: metricas + done --------------------------------------
         total_latency = (time.perf_counter() - t_start) * 1000
         tps = _tokens_per_second(
             result.get("eval_count"), result.get("eval_duration"),

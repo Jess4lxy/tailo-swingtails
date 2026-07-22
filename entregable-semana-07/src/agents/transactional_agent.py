@@ -40,6 +40,7 @@ _TOOL_LABELS: dict[str, str] = {
     "update_pet": "Actualizando los datos de tu mascota…",
     "delete_pet": "Eliminando la mascota…",
     "list_clinics": "Buscando clínicas veterinarias…",
+    "find_nearest_clinics": "Buscando veterinarias cerca de ti…",
     "list_appointments": "Consultando tus citas…",
     "book_appointment": "Agendando tu cita…",
     "reschedule_appointment": "Reagendando tu cita…",

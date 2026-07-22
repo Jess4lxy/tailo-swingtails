@@ -678,6 +678,14 @@ export default {
       isAgentLoading: false,
       agentPhase: null, // { phase, detail, tool }
 
+      // Geolocalizacion (para "veterinarias mas cercanas"). Se pide permiso al
+      // navegador SOLO cuando el usuario pregunta algo de ubicacion; si lo
+      // concede, se manda lat/lon en cada mensaje. Si lo niega, marcamos
+      // geoDenied para NO volver a molestar (el agente pedira activarlo).
+      userLat: null,
+      userLon: null,
+      geoDenied: false,
+
       // Voice Settings
       isRecording: false,
       mediaRecorder: null,
@@ -1142,10 +1150,51 @@ export default {
       this.sendMessage();
     },
 
+    // ¿El mensaje pide veterinarias por cercania/ubicacion? Si es asi, conviene
+    // pedir el permiso de ubicacion ANTES de enviar, para que el agente pueda
+    // calcular las clinicas cercanas en el mismo turno.
+    looksLikeLocationIntent(text) {
+      return /cercan|cerca de m|mas cerca|m[aá]s pr[oó]xim|cerca de aqu|por mi ubicaci|mi ubicaci|junto a m[ií]/i
+        .test(text || '');
+    },
+
+    // Pide la ubicacion al navegador (una sola vez). Devuelve {lat, lon} o null.
+    // Cachea el resultado; si el usuario niega el permiso, no vuelve a pedirlo.
+    ensureLocation() {
+      if (this.userLat != null && this.userLon != null) {
+        return Promise.resolve({ lat: this.userLat, lon: this.userLon });
+      }
+      if (this.geoDenied || !('geolocation' in navigator)) {
+        return Promise.resolve(null);
+      }
+      return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            this.userLat = pos.coords.latitude;
+            this.userLon = pos.coords.longitude;
+            resolve({ lat: this.userLat, lon: this.userLon });
+          },
+          (err) => {
+            // 1 = PERMISSION_DENIED: no volver a insistir en esta sesion.
+            if (err && err.code === 1) this.geoDenied = true;
+            resolve(null);
+          },
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+        );
+      });
+    },
+
     // Sending messages (SSE integration)
     async sendMessage(isRetry = false) {
       const text = this.inputMessage.trim();
       if (!text || this.isAgentLoading) return;
+
+      // Si el mensaje es de ubicacion y aun no tenemos coordenadas, pedimos el
+      // permiso ANTES de enviar (el navegador muestra su prompt nativo). Si el
+      // usuario lo concede rapido, este mismo turno ya lleva lat/lon.
+      if (!isRetry && this.looksLikeLocationIntent(text)) {
+        await this.ensureLocation();
+      }
 
       // Sesión vencida: intentamos re-login silencioso; si no hay credenciales
       // en memoria (o falla), recién ahí pedimos al usuario iniciar sesión.
@@ -1190,7 +1239,11 @@ export default {
           },
           body: JSON.stringify({
             message: text,
-            conversation_id: this.activeConversationId || undefined
+            conversation_id: this.activeConversationId || undefined,
+            // Ubicacion solo si el usuario la concedio (si no, van null y el
+            // agente pedira activar el permiso cuando haga falta).
+            lat: this.userLat != null ? this.userLat : undefined,
+            lon: this.userLon != null ? this.userLon : undefined
           })
         });
 

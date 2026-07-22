@@ -355,6 +355,70 @@ def list_clinics(limit: int = 10, page: int = 1) -> dict:
     )
 
 
+def find_nearest_clinics(limit: int = 3) -> dict:
+    """Devuelve las veterinarias MAS CERCANAS a la ubicacion del usuario.
+
+    Uselo cuando el usuario pregunte por clinicas "cerca de mi", "las mas
+    cercanas", "cual me queda mas cerca" o similar. La ubicacion (lat/lon) NO la
+    provee el modelo: la comparte el usuario desde el navegador y se toma de la
+    sesion. NUNCA inventes coordenadas ni distancias.
+
+    Args:
+        limit: Cuantas clinicas cercanas devolver (por defecto 3).
+
+    Si el usuario NO ha compartido su ubicacion, devuelve
+    {"necesita_ubicacion": true, ...}: en ese caso pidele que active el permiso
+    de ubicacion del navegador (la app se lo solicitara) y vuelve a intentar.
+    """
+    import geo
+
+    loc = geo.get_location()
+    if loc is None:
+        return {
+            "necesita_ubicacion": True,
+            "mensaje": "Para decirte las veterinarias mas cercanas necesito tu "
+            "ubicacion. Pidele al usuario que ACEPTE el permiso de ubicacion que "
+            "le mostrara el navegador y que vuelva a preguntar. No inventes "
+            "clinicas ni distancias.",
+        }
+
+    clinics = get_client().get("/api/veterinary", params={"limit": 50, "page": 1})
+    if isinstance(clinics, dict) and clinics.get("error"):
+        return clinics
+    if not isinstance(clinics, list) or not clinics:
+        return {"vacio": True, "mensaje": "No hay clinicas registradas para comparar."}
+
+    rankeadas = []
+    for c in clinics:
+        lat, lon = geo.clinic_coords(c)
+        dist = geo.haversine_km(loc["lat"], loc["lon"], lat, lon)
+        rankeadas.append((dist, c))
+    rankeadas.sort(key=lambda t: t[0])
+
+    n = max(1, min(int(limit or 3), 10))
+    cercanas = []
+    for dist, c in rankeadas[:n]:
+        direccion = " ".join(
+            str(c.get(k, "")).strip()
+            for k in ("street", "exterior_number", "neighborhood")
+            if c.get(k)
+        ).strip()
+        cercanas.append({
+            "id": c.get("id"),
+            "name": c.get("name"),
+            "city": c.get("city"),
+            "address": direccion or None,
+            "phone": c.get("phone_number"),
+            "distance_km": round(dist, 1),
+        })
+    return {
+        "total": len(cercanas),
+        "clinicas_cercanas": cercanas,
+        "nota": "Distancias aproximadas ordenadas de la mas cercana a la mas "
+        "lejana respecto a la ubicacion del usuario.",
+    }
+
+
 def list_appointments(limit: int = 100, page: int = 1) -> dict:
     """Lista las citas del usuario autenticado.
 
@@ -579,6 +643,7 @@ TOOL_REGISTRY: dict[str, Callable[..., Any]] = {
     "update_pet": update_pet,
     "delete_pet": delete_pet,
     "list_clinics": list_clinics,
+    "find_nearest_clinics": find_nearest_clinics,
     "list_appointments": list_appointments,
     "book_appointment": book_appointment,
     "reschedule_appointment": reschedule_appointment,
@@ -688,6 +753,20 @@ TOOL_SCHEMAS: list[dict] = [
                 "properties": {
                     "limit": {"type": "integer", "default": 10},
                     "page": {"type": "integer", "default": 1},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_nearest_clinics",
+            "description": "Devuelve las veterinarias MAS CERCANAS a la ubicacion del usuario (para 'cerca de mi', 'la mas cercana'). La ubicacion se toma de la sesion (el usuario la comparte desde el navegador); NO la pases tu. Si el usuario no compartio ubicacion, devuelve necesita_ubicacion=true.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Cuantas clinicas cercanas (por defecto 3).", "default": 3}
                 },
                 "required": [],
             },

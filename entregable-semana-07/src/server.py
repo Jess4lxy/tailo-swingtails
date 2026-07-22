@@ -43,6 +43,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 import api_client
+import geo
 import observability
 import sessions
 from agents.orchestrator import Orchestrator
@@ -118,6 +119,12 @@ class ChatRequest(BaseModel):
         default=False,
         description="Fuerza una conversacion nueva aunque se envie un id.",
     )
+    # Ubicacion del usuario (opcional): el frontend la obtiene con la Geolocation
+    # API del navegador y la envia SOLO cuando el usuario dio permiso. Se usa para
+    # "veterinarias mas cercanas" (find_nearest_clinics). Si falta, esa tool pide
+    # al usuario que active el permiso.
+    lat: float | None = Field(default=None, description="Latitud del usuario (grados).")
+    lon: float | None = Field(default=None, description="Longitud del usuario (grados).")
 
 
 class ChatResponse(BaseModel):
@@ -198,16 +205,27 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
     if req.new_session or not conv_id or not sessions.conversation_exists(conv_id, user_id):
         conv_id = sessions.create_conversation(user_id=user_id)
 
-    # --- C. Prompting: historial persistido (resumen + turnos recientes) -----
-    # El orquestador lo pasa TAL CUAL al especialista (contexto entre agentes).
-    context = sessions.build_context(conv_id)
+    # Ubicacion del usuario para este turno (si la compartio): la activamos en el
+    # ContextVar por-hilo para que la tool find_nearest_clinics la lea, igual que
+    # el token de usuario. Vive y muere dentro de este pipeline (mismo hilo).
+    loc_token = None
+    if req.lat is not None and req.lon is not None:
+        loc_token = geo.use_request_location({"lat": req.lat, "lon": req.lon})
 
-    done_ev: dict | None = None
-    for ev in _orchestrator().run_turn(context, req.message):
-        if ev.get("type") == "done":
-            done_ev = ev
-            break
-        yield ev
+    try:
+        # --- C. Prompting: historial persistido (resumen + turnos recientes) -
+        # El orquestador lo pasa TAL CUAL al especialista (contexto entre agentes).
+        context = sessions.build_context(conv_id)
+
+        done_ev: dict | None = None
+        for ev in _orchestrator().run_turn(context, req.message):
+            if ev.get("type") == "done":
+                done_ev = ev
+                break
+            yield ev
+    finally:
+        if loc_token is not None:
+            geo.reset_request_location(loc_token)
 
     if done_ev is None:  # defensivo: no deberia pasar
         done_ev = {"type": "done", "reply": "", "route": None, "blocked": False,

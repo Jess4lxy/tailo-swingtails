@@ -210,6 +210,29 @@ COMPACT_TARGET_TOKENS = int(HISTORY_TOKEN_BUDGET * 0.6)  # objetivo tras compact
 KEEP_RECENT_MESSAGES = 6               # ultimos N mensajes NUNCA se resumen (3 turnos)
 
 # ---------------------------------------------------------------------------
+# Geolocalizacion: "veterinarias mas cercanas" (entregable semana 07)
+# ---------------------------------------------------------------------------
+# La API/corpus NO traen coordenadas de las clinicas (datos ficticios), asi que
+# a cada clinica se le asigna una coordenada sintetica DETERMINISTA dispersa
+# alrededor de esta ciudad base. Merida, Yucatan (sede de la UTM y ciudad del
+# corpus) por defecto; configurable por env. `GEO_SPREAD_DEG` es el radio de
+# dispersion en grados (~0.12 deg ≈ 13 km). Ver geo.py.
+GEO_BASE_LAT = float(os.getenv("TAILO_GEO_BASE_LAT", "20.9674"))
+GEO_BASE_LON = float(os.getenv("TAILO_GEO_BASE_LON", "-89.5926"))
+GEO_SPREAD_DEG = float(os.getenv("TAILO_GEO_SPREAD_DEG", "0.12"))
+
+# ---------------------------------------------------------------------------
+# Lectura de enlaces compartidos por el usuario (entregable semana 07)
+# ---------------------------------------------------------------------------
+# Si el usuario pega una URL en el chat, el backend la descarga, extrae su texto
+# y lo inyecta al contexto (ver web_reader.py). Limites de seguridad/rendimiento:
+WEB_READ_ENABLED = os.getenv("TAILO_WEB_READ_ENABLED", "1") not in {"0", "false", "False"}
+WEB_READ_TIMEOUT = int(os.getenv("TAILO_WEB_READ_TIMEOUT", "8"))       # seg por enlace
+WEB_READ_MAX_URLS = int(os.getenv("TAILO_WEB_READ_MAX_URLS", "2"))     # enlaces por mensaje
+WEB_READ_MAX_BYTES = int(os.getenv("TAILO_WEB_READ_MAX_BYTES", str(2_000_000)))  # 2 MB
+WEB_READ_MAX_CHARS = int(os.getenv("TAILO_WEB_READ_MAX_CHARS", "6000"))  # texto inyectado
+
+# ---------------------------------------------------------------------------
 # API publica de SwingTails
 # ---------------------------------------------------------------------------
 API_BASE = os.getenv(
