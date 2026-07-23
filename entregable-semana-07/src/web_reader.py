@@ -67,36 +67,63 @@ def extract_urls(text: str) -> list[str]:
 # Extraccion de texto legible de HTML (sin dependencias externas).
 # ---------------------------------------------------------------------------
 class _TextExtractor(HTMLParser):
-    """Acumula el texto visible, ignorando script/style, y captura el <title>."""
+    """Acumula el texto visible, ignorando script/style, y captura el <title>.
+
+    Ignora ademas los contenedores tipicos de navegacion/pie (nav, header,
+    footer, aside, menus): en sitios de contenido (Purina, wikis) esas zonas
+    llenan de ruido el extracto y desplazan el contenido util fuera del limite
+    de caracteres. Si la pagina marca su contenido con <main> o <article>, se
+    extrae SOLO de ahi (parametro main_only)."""
 
     _SKIP = {"script", "style", "noscript", "template", "svg"}
+    # Zonas de "cromo" del sitio: menus, cabecera, pie, barras laterales.
+    _CHROME = {"nav", "header", "footer", "aside"}
+    _MAIN = {"main", "article"}
 
-    def __init__(self) -> None:
+    def __init__(self, main_only: bool = False) -> None:
         super().__init__()
         self.parts: list[str] = []
         self.title: str = ""
         self._skip_depth = 0
+        self._chrome_depth = 0
+        self._main_depth = 0
         self._in_title = False
+        self._main_only = main_only
 
     def handle_starttag(self, tag, attrs):
         if tag in self._SKIP:
             self._skip_depth += 1
+        elif tag in self._CHROME:
+            self._chrome_depth += 1
+        elif tag in self._MAIN:
+            self._main_depth += 1
         elif tag == "title":
             self._in_title = True
 
     def handle_endtag(self, tag):
         if tag in self._SKIP and self._skip_depth:
             self._skip_depth -= 1
+        elif tag in self._CHROME and self._chrome_depth:
+            self._chrome_depth -= 1
+        elif tag in self._MAIN and self._main_depth:
+            self._main_depth -= 1
         elif tag == "title":
             self._in_title = False
         elif tag in ("p", "br", "div", "li", "h1", "h2", "h3", "h4", "tr"):
             self.parts.append("\n")
 
+    def _capturing(self) -> bool:
+        if self._skip_depth or self._chrome_depth:
+            return False
+        if self._main_only and self._main_depth == 0:
+            return False
+        return True
+
     def handle_data(self, data):
-        if self._skip_depth:
-            return
         if self._in_title:
             self.title += data
+        if not self._capturing():
+            return
         text = data.strip()
         if text:
             self.parts.append(text + " ")
@@ -181,13 +208,27 @@ def _fetch_one(url: str) -> dict:
         html = raw.decode("utf-8", errors="replace")
 
     if "html" in ctype or "<html" in html[:2000].lower():
-        parser = _TextExtractor()
+        # Si la pagina marca su contenido con <main>/<article>, extraemos SOLO de
+        # ahi (evita menus). Ademas siempre saltamos nav/header/footer/aside.
+        low = html.lower()
+        main_only = ("<main" in low) or ("<article" in low)
+        parser = _TextExtractor(main_only=main_only)
         try:
             parser.feed(html)
         except Exception:  # noqa: BLE001 - HTML malformado no debe romper el turno
             pass
         title = parser.title.strip()
         text = parser.get_text()
+        # Red de seguridad: si el modo main_only dejo muy poco texto (main mal
+        # marcado), reintentamos con la pagina completa (sin nav) para no perder
+        # el contenido.
+        if main_only and len(text) < 400:
+            parser2 = _TextExtractor(main_only=False)
+            try:
+                parser2.feed(html)
+            except Exception:  # noqa: BLE001
+                pass
+            text = parser2.get_text()
     else:
         title = ""
         text = html.strip()

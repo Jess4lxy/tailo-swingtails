@@ -1089,6 +1089,62 @@ body {
   color: var(--danger-color);
 }
 
+/* Aviso de ubicación (banner sobre el input): instrucciones accionables cuando
+   la geolocalización esta bloqueada por el navegador o fallo. */
+.geo-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 24px;
+  padding: 10px 14px;
+  background: rgba(238, 169, 136, 0.15);
+  border: 1px solid rgba(106, 63, 54, 0.25);
+  border-radius: 12px;
+  color: var(--custom-brown);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  animation: fadeInUp 0.2s ease-out;
+}
+
+.geo-notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.geo-notice-btn {
+  flex-shrink: 0;
+  background: var(--accent-gradient);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-family: var(--font-family);
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.geo-notice-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--custom-brown);
+  cursor: pointer;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.geo-notice-close:hover {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .geo-notice {
+    margin: 0 14px;
+    flex-wrap: wrap;
+  }
+}
+
 /* Input area styling */
 .chat-input-area {
   padding: 20px 24px;

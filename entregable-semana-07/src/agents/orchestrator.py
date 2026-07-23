@@ -31,6 +31,7 @@ Eventos que emite:
 from __future__ import annotations
 
 import datetime
+import re
 import time
 
 import ollama
@@ -59,6 +60,24 @@ _SMALLTALK_SYSTEM = """Eres Tailo, el asistente virtual de SwingTails (app de ma
 def _date_prefix() -> str:
     today = datetime.date.today().isoformat()
     return f"[Fecha de hoy: {today}. Si el usuario da una fecha sin año, usa el año actual.]\n\n"
+
+
+# El usuario suele hacer SEGUIMIENTOS sin volver a pegar la URL ("¿que dice la
+# pagina?", "leela"). Como el contenido web es efimero (no se guarda en memoria),
+# detectamos esas referencias y reusamos el ultimo enlace del historial.
+_PAGE_REF_RX = re.compile(
+    r"\b(pagina|enlace|link|sitio|articulo|url|esa web|la web|ese texto|ahi dice|"
+    r"que dice|leela|leerla|lee la|abre la|en ella|de ella)\b"
+)
+
+
+def _urls_from_history(context: list[dict]) -> list[str]:
+    """Ultimas URLs que aparecieron en el historial (mensajes mas recientes)."""
+    for m in reversed(context):
+        found = web_reader.extract_urls(m.get("content", "") or "")
+        if found:
+            return found
+    return []
 
 
 def _history_hint(context: list[dict], max_chars: int = 400) -> str:
@@ -124,6 +143,9 @@ class Orchestrator:
         # script de Python). El bloque se agrega como un turno de usuario extra,
         # ANTES del mensaje real, para no contaminar la recuperacion del RAG.
         urls = web_reader.extract_urls(user_message)
+        # Seguimiento sin URL ("¿que dice la pagina?"): reusa el ultimo enlace.
+        if not urls and _PAGE_REF_RX.search(user_message.lower()):
+            urls = _urls_from_history(context)
         web_context: list[dict] = list(context)
         if urls:
             yield {"type": "phase", "phase": "searching",
@@ -136,9 +158,12 @@ class Orchestrator:
         yield {"type": "phase", "phase": "routing", "detail": "Analizando tu solicitud…"}
         decision = self._router.route(user_message, history_hint=_history_hint(context))
         route = decision["route"]
-        # Un mensaje con un enlace para revisar es informativo: si el ruteador lo
-        # mando a charla, lo tratamos como RAG para que use el contenido leido.
-        if urls and route == Route.SMALLTALK:
+        # Un mensaje con un enlace es, casi siempre, "lee esta pagina y platicame":
+        # es informativo. Lo forzamos a RAG (que ya tiene el contenido inyectado)
+        # para que NO se vaya al agente transaccional y termine llamando tools de
+        # cuenta que no vienen al caso (p.ej. list_my_pets ante "el primer perro
+        # de la lista DE LA PAGINA").
+        if urls and web_block:
             route = Route.RAG
         yield {"type": "route", "route": route, "reason": decision.get("reason", ""),
                "method": decision.get("method", "")}

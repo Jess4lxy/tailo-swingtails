@@ -230,7 +230,7 @@ WEB_READ_ENABLED = os.getenv("TAILO_WEB_READ_ENABLED", "1") not in {"0", "false"
 WEB_READ_TIMEOUT = int(os.getenv("TAILO_WEB_READ_TIMEOUT", "8"))       # seg por enlace
 WEB_READ_MAX_URLS = int(os.getenv("TAILO_WEB_READ_MAX_URLS", "2"))     # enlaces por mensaje
 WEB_READ_MAX_BYTES = int(os.getenv("TAILO_WEB_READ_MAX_BYTES", str(2_000_000)))  # 2 MB
-WEB_READ_MAX_CHARS = int(os.getenv("TAILO_WEB_READ_MAX_CHARS", "6000"))  # texto inyectado
+WEB_READ_MAX_CHARS = int(os.getenv("TAILO_WEB_READ_MAX_CHARS", "8000"))  # texto inyectado
 
 # ---------------------------------------------------------------------------
 # API publica de SwingTails

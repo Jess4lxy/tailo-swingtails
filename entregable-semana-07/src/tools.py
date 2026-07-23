@@ -398,24 +398,20 @@ def find_nearest_clinics(limit: int = 3) -> dict:
     n = max(1, min(int(limit or 3), 10))
     cercanas = []
     for dist, c in rankeadas[:n]:
-        direccion = " ".join(
-            str(c.get(k, "")).strip()
-            for k in ("street", "exterior_number", "neighborhood")
-            if c.get(k)
-        ).strip()
+        # NOTA: NO devolvemos la direccion. La API entrega direcciones ficticias
+        # en formato de EE.UU. (faker) aunque la ciudad diga "Merida", lo que
+        # produce respuestas incoherentes ("493 S Market Street en Merida"). Solo
+        # el nombre y la distancia son utiles/coherentes aqui.
         cercanas.append({
-            "id": c.get("id"),
             "name": c.get("name"),
-            "city": c.get("city"),
-            "address": direccion or None,
-            "phone": c.get("phone_number"),
             "distance_km": round(dist, 1),
         })
     return {
         "total": len(cercanas),
         "clinicas_cercanas": cercanas,
-        "nota": "Distancias aproximadas ordenadas de la mas cercana a la mas "
-        "lejana respecto a la ubicacion del usuario.",
+        "nota": "Distancias APROXIMADAS (simuladas), ordenadas de la mas cercana "
+        "a la mas lejana. Preséntalas SOLO como 'nombre (distancia km)'; NO "
+        "menciones direcciones (no son fiables).",
     }
 
 

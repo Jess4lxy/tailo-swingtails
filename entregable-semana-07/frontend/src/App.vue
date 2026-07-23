@@ -402,6 +402,16 @@
             </div>
           </div>
 
+          <!-- Aviso de ubicación (cuando esta bloqueada o fallo): guia al usuario -->
+          <div v-if="geoNotice" class="geo-notice">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+            <span class="geo-notice-text">{{ geoNotice }}</span>
+            <button class="geo-notice-btn" @click="retryLocation">Reintentar</button>
+            <button class="geo-notice-close" @click="geoNotice = ''" title="Cerrar">✕</button>
+          </div>
+
           <!-- Chat Input Area -->
           <footer class="chat-input-area">
             <div class="chat-input-wrapper">
@@ -687,6 +697,10 @@ export default {
       geoDenied: false,
       // Evita reintentar la ubicacion en bucle dentro de un mismo mensaje.
       locationRetryDone: false,
+      // Aviso visible con instrucciones cuando la ubicacion falla o esta
+      // bloqueada por el navegador (el prompt nativo no reaparece si el usuario
+      // ya la denego). Se muestra como banner sobre el input del chat.
+      geoNotice: '',
 
       // Voice Settings
       isRecording: false,
@@ -1160,30 +1174,78 @@ export default {
         .test(text || '');
     },
 
-    // Pide la ubicacion al navegador (una sola vez). Devuelve {lat, lon} o null.
-    // Cachea el resultado; si el usuario niega el permiso, no vuelve a pedirlo.
-    ensureLocation() {
+    // Pide la ubicacion al navegador. Devuelve {lat, lon} o null, y en caso de
+    // fallo deja un aviso ACCIONABLE en geoNotice (el banner). Clave: si el
+    // usuario ya bloqueo la ubicacion, el navegador NO vuelve a mostrar el
+    // prompt; hay que detectarlo (Permissions API) y decirle como desbloquearla.
+    async ensureLocation() {
       if (this.userLat != null && this.userLon != null) {
-        return Promise.resolve({ lat: this.userLat, lon: this.userLon });
+        return { lat: this.userLat, lon: this.userLon };
       }
-      if (this.geoDenied || !('geolocation' in navigator)) {
-        return Promise.resolve(null);
+      if (!('geolocation' in navigator)) {
+        this.geoNotice = 'Tu navegador no soporta geolocalización.';
+        return null;
       }
-      return new Promise((resolve) => {
+      // La geolocalización solo funciona en contexto seguro (https o localhost).
+      if (window.isSecureContext === false) {
+        this.geoNotice = 'La ubicación solo funciona con conexión segura (https). '
+          + 'Abre la app desde su enlace https, no por la IP local.';
+        return null;
+      }
+      // ¿Ya está bloqueada? Entonces el prompt NO va a aparecer: guiamos al usuario.
+      try {
+        if (navigator.permissions && navigator.permissions.query) {
+          const st = await navigator.permissions.query({ name: 'geolocation' });
+          if (st.state === 'denied') {
+            this.geoDenied = true;
+            this.geoNotice = 'La ubicación está BLOQUEADA para este sitio. Haz clic en el '
+              + 'candado 🔒 (o el ícono ⚙/ⓘ) junto a la dirección → Ubicación → Permitir, '
+              + 'y luego recarga la página.';
+            return null;
+          }
+        }
+      } catch (e) { /* Permissions API no disponible: seguimos al getCurrentPosition */ }
+
+      return await new Promise((resolve) => {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             this.userLat = pos.coords.latitude;
             this.userLon = pos.coords.longitude;
+            this.geoNotice = '';
             resolve({ lat: this.userLat, lon: this.userLon });
           },
           (err) => {
-            // 1 = PERMISSION_DENIED: no volver a insistir en esta sesion.
-            if (err && err.code === 1) this.geoDenied = true;
+            if (err && err.code === 1) {          // PERMISSION_DENIED
+              this.geoDenied = true;
+              this.geoNotice = 'Bloqueaste la ubicación para este sitio. Haz clic en el candado '
+                + '🔒 junto a la dirección → Ubicación → Permitir, y recarga la página.';
+            } else if (err && err.code === 2) {   // POSITION_UNAVAILABLE
+              this.geoNotice = 'No se pudo obtener tu ubicación. Verifica que la ubicación del '
+                + 'dispositivo (GPS/servicios de ubicación) esté activada.';
+            } else {                               // TIMEOUT u otro
+              this.geoNotice = 'La ubicación tardó demasiado en responder. Usa "Reintentar".';
+            }
             resolve(null);
           },
-          { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
         );
       });
+    },
+
+    // Botón "Reintentar" del banner: reintenta la ubicacion (gesto del usuario,
+    // lo mas fiable para que aparezca el prompt) y, si la consigue, reenvia la
+    // ultima pregunta del usuario.
+    async retryLocation() {
+      this.geoDenied = false;
+      this.geoNotice = '';
+      const loc = await this.ensureLocation();
+      if (loc) {
+        const lastUser = [...this.messages].reverse().find(m => m.role === 'user');
+        if (lastUser && lastUser.content && !this.isAgentLoading) {
+          this.inputMessage = lastUser.content;
+          this.sendMessage(true);
+        }
+      }
     },
 
     // El backend indico que hace falta la ubicacion. Pide el permiso del
