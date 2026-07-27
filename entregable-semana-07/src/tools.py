@@ -41,6 +41,12 @@ _NO_SESSION_ERROR = {
     "(login con su email y contrasena) antes de hacer esta operacion."
 }
 
+# Registro de mascota EN PROGRESO por usuario (slot-filling entre turnos). Ver
+# register_pet: acumula los datos que el usuario va dando para que el modelo no
+# tenga que recordarlos. Se limpia al completar el registro o al cambiar de
+# mascota. Es estado de proceso, por-usuario; suficiente para el caso de uso.
+_pending_pet: dict[int, dict] = {}
+
 
 def _match_by_name(items: Any, name: str, key: str = "name") -> dict | None:
     """Busca un item por nombre (exacto y luego por substring, sin distinguir
@@ -186,6 +192,50 @@ def _coerce_age(age: Any) -> int | None:
     return n if 0 < n < 100 else None
 
 
+# Razas comunes -> especie. Red de seguridad para el registro: el modelo 8B a
+# veces NO deduce la especie a partir de la raza (el usuario dice "es un
+# dachshund" y el modelo deja specie y breed vacios, y sigue preguntando). Con
+# esto, si aparece una raza conocida (en breed O confundida en specie), fijamos
+# la especie y la raza automaticamente.
+_DOG_BREEDS = {
+    "labrador", "golden", "golden retriever", "retriever", "pastor aleman",
+    "pastor belga", "bulldog", "bulldog frances", "bulldog ingles", "frances",
+    "chihuahua", "poodle", "french poodle", "caniche", "dachshund", "daschund",
+    "dachshound", "salchicha", "perro salchicha", "pug", "carlino", "beagle",
+    "boxer", "rottweiler", "doberman", "husky", "husky siberiano", "schnauzer",
+    "yorkshire", "yorkie", "shih tzu", "maltes", "pomerania", "border collie",
+    "collie", "pitbull", "pit bull", "american bully", "dalmata", "san bernardo",
+    "gran danes", "akita", "chow chow", "cocker", "cocker spaniel", "basset",
+    "basset hound", "galgo", "pointer", "weimaraner", "bull terrier", "terrier",
+    "xoloitzcuintle", "xolo", "pekines", "samoyedo", "corgi", "springer",
+}
+_CAT_BREEDS = {
+    "siames", "persa", "angora", "maine coon", "bengali", "sphynx", "esfinge",
+    "ragdoll", "british shorthair", "azul ruso", "bombay", "abisinio",
+    "siberiano", "scottish fold", "munchkin", "himalayo", "birmano",
+}
+
+
+def _infer_specie_and_breed(specie: str, breed: str | None) -> tuple[str, str | None]:
+    """Deduce especie a partir de la raza y corrige campos intercambiados.
+
+    - Si el modelo puso una RAZA en el campo `specie` (p.ej. specie='dachshund'),
+      la mueve a `breed` y fija specie a 'perro'/'gato'.
+    - Si falta `specie` pero `breed` es una raza conocida, deduce la especie.
+    Asi 'es un dachshund' termina como specie='perro', breed='dachshund' sin que
+    el modelo tenga que razonarlo."""
+    ns = _normalize_specie(specie)
+    nb = _normalize_specie(breed)
+    if ns in _DOG_BREEDS or ns in _CAT_BREEDS:
+        if not (breed or "").strip():
+            breed = specie
+        specie = "perro" if ns in _DOG_BREEDS else "gato"
+        return specie, breed
+    if not (specie or "").strip() and (nb in _DOG_BREEDS or nb in _CAT_BREEDS):
+        specie = "perro" if nb in _DOG_BREEDS else "gato"
+    return specie, breed
+
+
 def register_pet(
     name: str = "",
     specie: str = "",
@@ -218,6 +268,34 @@ def register_pet(
     if uid is None:
         return dict(_NO_SESSION_ERROR)
 
+    # Red: deduce especie desde la raza (dachshund -> perro) y corrige campos
+    # intercambiados, antes de validar los obligatorios.
+    specie, breed = _infer_specie_and_breed(specie, breed)
+
+    # --- Acumulador de registro por usuario (slot-filling) -------------------
+    # Los resultados de las tools son EFIMEROS (no se guardan en memoria), asi
+    # que entre turnos el 8B "olvida" datos que el usuario ya dio (p.ej. la raza
+    # del primer mensaje). Guardamos el progreso por usuario y lo FUSIONAMOS:
+    # cada llamada solo APORTA los campos no vacios, conservando los anteriores.
+    # Es la solucion DETERMINISTA al bug de "vuelve a preguntar el nombre/raza".
+    prev = _pending_pet.get(uid)
+    if prev and name and prev.get("name") and _normalize_specie(prev["name"]) != _normalize_specie(name):
+        prev = None  # nombre distinto -> es OTRA mascota, no arrastres datos viejos
+    merged = dict(prev or {})
+    for k, v in (
+        ("name", name), ("specie", specie), ("sex", sex),
+        ("age", age), ("height", height), ("breed", breed), ("weight", weight),
+    ):
+        if v not in (None, "") and not (isinstance(v, str) and not v.strip()):
+            merged[k] = v
+    name = merged.get("name", "") or ""
+    specie = merged.get("specie", "") or ""
+    sex = merged.get("sex", "") or ""
+    age = merged.get("age", "")
+    height = merged.get("height", "") or ""
+    breed = merged.get("breed")
+    weight = merged.get("weight")
+
     # Red de seguridad: valida los obligatorios ANTES de tocar la API. Asi, si
     # el modelo alucino un valor invalido o dejo algo vacio, se le pide al
     # usuario en vez de registrar datos inventados.
@@ -234,16 +312,46 @@ def register_pet(
     if height not in VALID_HEIGHT:
         faltan.append("la altura en cm (<30, 30-40, 41-50, 51-60 o >60)")
     if faltan:
+        # Red anti-"vuelve a preguntar lo que ya dije": enumeramos lo que el
+        # modelo YA nos paso en esta llamada y le ordenamos NO volver a pedirlo.
+        # El bug reportado es que, tras juntar los datos faltantes, el 8B re-
+        # preguntaba el nombre/raza que el usuario dio al inicio; poner el
+        # recordatorio en el propio resultado de la tool (contexto inmediato) es
+        # mucho mas efectivo que solo la regla del system prompt.
+        ya = []
+        if (name or "").strip():
+            ya.append(f"nombre={name}")
+        if (specie or "").strip():
+            ya.append(f"especie={specie}")
+        if breed:
+            ya.append(f"raza={breed}")
+        if sex in VALID_SEX:
+            ya.append(f"sexo={sex}")
+        if age_num is not None:
+            ya.append(f"edad={age_num}")
+        if height in VALID_HEIGHT:
+            ya.append(f"altura={height}")
+        if weight is not None:
+            ya.append(f"peso={weight}")
+        resumen = (
+            f"Datos que YA tienes y NO debes volver a preguntar: {', '.join(ya)}. "
+            if ya else ""
+        )
+        _pending_pet[uid] = merged  # guarda el progreso para el proximo turno
         return {"preguntar_al_usuario":
-                f"Antes de registrar a {name or 'la mascota'} necesito que el "
-                f"usuario indique: {', '.join(faltan)}. Preguntaselo ofreciendo "
-                f"las opciones; NO inventes estos valores (la altura NO se "
-                f"deduce de la raza, el peso ni la edad)."}
+                f"{resumen}Falta que el usuario indique: {', '.join(faltan)}. Pregunta SOLO "
+                f"eso (ofrece las opciones donde aplique). Cuando el usuario responda, llama "
+                f"register_pet OTRA VEZ incluyendo TODOS los datos que ya tienes MAS los nuevos; "
+                f"NO vuelvas a preguntar el nombre, la especie ni la raza. NO inventes valores "
+                f"(la altura NO se deduce de la raza, el peso ni la edad)."}
 
     # Red de seguridad anti-dato-basura: no registres una especie de fantasia
     # (dragon, unicornio, pokemon...). El nombre puede ser de fantasia, la
     # especie no. Se pide el animal REAL antes de guardar.
     if _is_fictional_specie(specie):
+        # Conserva el resto del progreso pero descarta la especie invalida.
+        merged.pop("specie", None)
+        _pending_pet[uid] = merged
         return {"preguntar_al_usuario":
                 f"«{specie}» no es una mascota que se pueda tener hoy (parece una "
                 f"especie de fantasia o extinta), asi que no puedo registrarla asi. "
@@ -263,7 +371,11 @@ def register_pet(
         body["breed"] = breed
     if weight is not None:
         body["weight"] = float(weight)
-    return get_client().post("/api/pets", json_body=body)
+    result = get_client().post("/api/pets", json_body=body)
+    # Registro enviado con exito -> limpia el acumulador de este usuario.
+    if not (isinstance(result, dict) and result.get("error")):
+        _pending_pet.pop(uid, None)
+    return result
 
 
 def update_pet(
@@ -300,6 +412,7 @@ def update_pet(
     uid = _current_user_id()
     if uid is None:
         return dict(_NO_SESSION_ERROR)
+    specie, breed = _infer_specie_and_breed(specie, breed)
     age_num = _coerce_age(age)
     if age_num is None:
         return {"preguntar_al_usuario":
@@ -687,11 +800,11 @@ TOOL_SCHEMAS: list[dict] = [
                 "type": "object",
                 "properties": {
                     "name": {"type": "string", "description": "Nombre de la mascota."},
-                    "specie": {"type": "string", "description": "Especie: perro, gato, etc."},
+                    "specie": {"type": "string", "description": "Especie: perro, gato, etc. IMPORTANTE: si el usuario menciona una RAZA (dachshund, labrador, chihuahua, siames, persa...), esa raza YA indica la especie: una raza de perro -> pon 'perro'; una raza de gato -> pon 'gato'. No dejes este campo vacio si el usuario dio una raza."},
                     "sex": {"type": "string", "description": "'Macho' o 'Hembra'. Si el usuario no lo dijo, pasa cadena vacia \"\"."},
                     "age": {"type": "integer", "description": "Edad en AÑOS como numero entero (p.ej. 10). NO es una categoria. Si el usuario no lo dijo, pasa \"\"."},
                     "height": {"type": "string", "description": "Altura en cm: '<30', '30-40', '41-50', '51-60' o '>60'. Es una medida fisica que SOLO da el usuario; NUNCA la deduzcas de la raza, el peso ni la edad. Si el usuario no la dijo, pasa cadena vacia \"\"."},
-                    "breed": {"type": "string", "description": "Raza (opcional)."},
+                    "breed": {"type": "string", "description": "Raza de la mascota (p.ej. 'dachshund', 'labrador'). SIEMPRE captura la raza si el usuario la menciona; no la dejes vacia en ese caso."},
                     "weight": {"type": "number", "description": "Peso en kg (opcional)."},
                 },
                 "required": ["name", "specie"],

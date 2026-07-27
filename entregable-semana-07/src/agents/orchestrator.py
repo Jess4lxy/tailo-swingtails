@@ -40,7 +40,7 @@ import web_reader
 from config import LLM_MODEL, OLLAMA_HOST, TOP_K
 from guardrails import check_prompt_injection
 from retrieve import Retriever
-from agents.prompts import LENGUAJE
+from agents.prompts import LENGUAJE, SEGURIDAD
 from agents.rag_agent import RagAgent
 from agents.router import RouterAgent
 from agents.transactional_agent import TransactionalAgent
@@ -54,7 +54,7 @@ class Route:
 
 
 # Prompt minusculo para el turno de charla/capacidades (sin tools, sin RAG).
-_SMALLTALK_SYSTEM = """Eres Tailo, el asistente virtual de SwingTails (app de mascotas). Responde saludos, agradecimientos y preguntas sobre quien eres o que puedes hacer de forma calida y BREVE, en español. Cuando te pregunten en que ayudas, menciona tus areas: consultar, registrar y actualizar mascotas; agendar y gestionar citas veterinarias; ver clinicas y el catalogo de productos; y dar consejos de cuidado, salud y alimentacion. NO llames herramientas ni listes datos de la cuenta del usuario (todavia no te lo han pedido). Termina invitando a decir en que te gustaria ayudar.""" + LENGUAJE
+_SMALLTALK_SYSTEM = """Eres Tailo, el asistente virtual de SwingTails (app de mascotas). Responde saludos, agradecimientos y preguntas sobre quien eres o que puedes hacer de forma calida y BREVE, en español. Cuando te pregunten en que ayudas, menciona tus areas: consultar, registrar y actualizar mascotas; agendar y gestionar citas veterinarias; ver clinicas y el catalogo de productos; y dar consejos de cuidado, salud y alimentacion. NO llames herramientas ni listes datos de la cuenta del usuario (todavia no te lo han pedido). Termina invitando a decir en que te gustaria ayudar.""" + SEGURIDAD + LENGUAJE
 
 
 def _date_prefix() -> str:

@@ -83,6 +83,28 @@ _RAW_PATTERNS: list[tuple[str, str]] = [
     ("jailbreak", r"\b(sin|no tienes|olvida tus)\s+(restricciones|reglas|filtros|limites|censura)\b"),
     ("jailbreak", r"\b(eres|ahora eres)\b.{0,25}\b(un modelo sin|una ia sin|libre de toda)\b"),
     ("jailbreak", r"\bbypass\b.{0,20}\b(rules|filter|guardrail|safety|restrictions)\b"),
+
+    # --- Fuga de codigo fuente / archivos internos ------------------------
+    # Cuidado con falsos positivos del dominio (p.ej. "codigo de descuento",
+    # "codigo postal"): por eso se exige un calificador claramente interno.
+    ("code_leak", r"\b(codigo fuente|source code|codigo del (sistema|agente|backend|programa|bot)|tu codigo|codigo python|source-code)\b"),
+    ("code_leak", r"\b(server|prompts?|tools|config|api_client|orchestrator|guardrails|sessions|retrieve|web_reader|stress_db|geo)\.py\b"),
+    ("code_leak", r"\b(modelfile|dockerfile|docker-compose|requirements\.txt|package\.json)\b"),
+
+    # --- Fuga de secretos / configuracion / estructura interna ------------
+    ("secret_leak", r"(?<!\w)\.env\b|\barchivo env\b|\bvariables? de entorno\b|\benvironment variables?\b|\benv vars?\b"),
+    ("secret_leak", r"\b(api[\s_-]?key|clave de api|access[\s_-]?token|token de acceso|refresh[\s_-]?token|jwt secret|secret key|clave secreta|db password|contrasena de la base(\s+de datos)?|credenciales del (sistema|servidor)|llave privada|private key)\b"),
+    ("secret_leak", r"\b(estructura|esquema|schema|tablas?|modelo de datos|diagrama)\b.{0,18}\b(base de datos|bd|sqlite|db|backend)\b"),
+    ("secret_leak", r"\b(que|cuales)\b.{0,18}\b(herramientas|funciones|tools|endpoints?|apis?)\b.{0,12}\b(internas?|tienes|dispones|usas|disponibles)\b"),
+
+    # --- Escalada de privilegios / suplantacion de autoridad --------------
+    # NO se bloquea un simple "soy administrador de la clinica" (rol de negocio
+    # legitimo): se exige que la frase apunte al SISTEMA/acceso/datos internos.
+    ("authority", r"\b(dame|otorgame|activa|habilita|entra en|ponte en|necesito|quiero|concedeme|dame acceso a)\b.{0,22}\b(modo|acceso|permisos?|privilegios?|rol)\s+(de\s+)?(administrador|admin|root|superusuario|super usuario|dios|elevados?|sudo)\b"),
+    ("authority", r"\b(modo|acceso|permisos?|privilegios?)\s+(administrador|admin|root|superusuario|dios|sudo)\b"),
+    ("authority", r"\bsoy (el |la |un |una |su )?(administrador|admin|superusuario|super usuario|root|desarrollador|developer|ingeniero|programador|hacker)\b.{0,35}\b(sistema|tailo|swingtails|servidor|base de datos|backend|codigo|prompt|instruccion(es)?|acceso|permiso|configuracion|interno)\b"),
+    ("authority", r"\bsoy (el |la |tu )?(creador|desarrollador|dueno|programador|ingeniero)\b.{0,18}\b(de tailo|del sistema|de swingtails|del agente|del backend|de esta ia)\b"),
+    ("authority", r"\bcomo (administrador|admin|superusuario|root|desarrollador)\b.{0,25}\b(dame|muestra|revela|accede|entra|desbloquea|ignora|elimina|borra)\b"),
 ]
 
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
