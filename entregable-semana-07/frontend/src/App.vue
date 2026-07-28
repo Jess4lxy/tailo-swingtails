@@ -13,7 +13,7 @@
         </div>
 
         <!-- Selector Iniciar sesión / Crear cuenta -->
-        <div class="auth-tabs">
+        <div v-if="authMode !== 'forgot'" class="auth-tabs">
           <button
             type="button"
             :class="['auth-tab', { active: authMode === 'login' }]"
@@ -78,13 +78,24 @@
 
           <div class="form-group">
             <label>Contraseña</label>
-            <input
-              v-model="regPassword"
-              type="password"
-              :class="['form-input', { invalid: touched.password && !passwordValid }]"
-              placeholder="••••••••"
-              @blur="touched.password = true"
-            />
+            <div class="password-input-wrapper">
+              <input
+                v-model="regPassword"
+                :type="showRegPassword ? 'text' : 'password'"
+                :class="['form-input', { invalid: touched.password && !passwordValid }]"
+                placeholder="••••••••"
+                @blur="touched.password = true"
+              />
+              <button
+                type="button"
+                class="btn-toggle-pwd"
+                @click="showRegPassword = !showRegPassword"
+                :title="showRegPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
+              >
+                <EyeOff v-if="showRegPassword" :size="18" />
+                <Eye v-else :size="18" />
+              </button>
+            </div>
 
             <!-- Requisitos EN VIVO: se marcan en verde conforme se cumplen. Son
                  exactamente los que exige la API de SwingTails (su mensaje de
@@ -100,13 +111,24 @@
 
           <div class="form-group">
             <label>Confirmar contraseña</label>
-            <input
-              v-model="regPassword2"
-              type="password"
-              :class="['form-input', { invalid: touched.password2 && !passwordsMatch }]"
-              placeholder="••••••••"
-              @blur="touched.password2 = true"
-            />
+            <div class="password-input-wrapper">
+              <input
+                v-model="regPassword2"
+                :type="showRegPassword2 ? 'text' : 'password'"
+                :class="['form-input', { invalid: touched.password2 && !passwordsMatch }]"
+                placeholder="••••••••"
+                @blur="touched.password2 = true"
+              />
+              <button
+                type="button"
+                class="btn-toggle-pwd"
+                @click="showRegPassword2 = !showRegPassword2"
+                :title="showRegPassword2 ? 'Ocultar contraseña' : 'Ver contraseña'"
+              >
+                <EyeOff v-if="showRegPassword2" :size="18" />
+                <Eye v-else :size="18" />
+              </button>
+            </div>
             <p v-if="touched.password2 && !passwordsMatch" class="field-error">
               Las contraseñas no coinciden.
             </p>
@@ -134,6 +156,54 @@
           </p>
         </form>
 
+        <!-- ============ RECUPERAR CONTRASEÑA ============ -->
+        <form v-else-if="authMode === 'forgot'" @submit.prevent="handleForgotPassword">
+          <div style="margin-bottom: 20px; text-align: center;">
+            <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Recuperar contraseña</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+              Ingresa tu correo electrónico registrado y te enviaremos las instrucciones para restablecer tu contraseña.
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label>Correo Electrónico</label>
+            <input 
+              v-model="forgotEmail" 
+              type="email" 
+              class="form-input" 
+              placeholder="ejemplo@correo.com" 
+              required
+            />
+          </div>
+
+          <div v-if="forgotError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
+            {{ forgotError }}
+          </div>
+
+          <div v-if="forgotSuccess" style="color: #2ecc71; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500; background: rgba(46, 204, 113, 0.1); padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(46, 204, 113, 0.3);">
+            {{ forgotSuccess }}
+          </div>
+
+          <button type="submit" class="btn-primary" :disabled="forgotLoading || !forgotEmail">
+            <template v-if="forgotLoading">
+              <svg class="spinner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                <path d="M4 12a8 8 0 0 1 8-8V4C5.37 4 0 9.37 0 16h4z" fill="currentColor"></path>
+              </svg>
+              Enviando...
+            </template>
+            <template v-else>
+              Enviar instrucciones
+            </template>
+          </button>
+
+          <div style="margin-top: 16px; text-align: center;">
+            <a href="#" @click.prevent="switchAuthMode('login')" style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">
+              ← Volver a Iniciar sesión
+            </a>
+          </div>
+        </form>
+
         <!-- ============ LOGIN ============ -->
         <form v-else @submit.prevent="handleLogin">
           <div class="form-group">
@@ -149,13 +219,28 @@
 
           <div class="form-group">
             <label>Contraseña</label>
-            <input 
-              v-model="password" 
-              type="password" 
-              class="form-input" 
-              placeholder="••••••••" 
-              required
-            />
+            <div class="password-input-wrapper">
+              <input 
+                v-model="password" 
+                :type="showLoginPassword ? 'text' : 'password'" 
+                class="form-input" 
+                placeholder="••••••••" 
+                required
+              />
+              <button
+                type="button"
+                class="btn-toggle-pwd"
+                @click="showLoginPassword = !showLoginPassword"
+                :title="showLoginPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
+              >
+                <EyeOff v-if="showLoginPassword" :size="18" />
+                <Eye v-else :size="18" />
+              </button>
+            </div>
+          </div>
+
+          <div class="forgot-password" style="margin-bottom: 20px; text-align: right;">
+            <a href="#" @click.prevent="switchAuthMode('forgot')" style="color: var(--text-muted); font-size: 0.90rem;">¿Olvidaste tu contraseña?</a>
           </div>
 
           <div v-if="loginError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
@@ -175,6 +260,7 @@
             </template>
           </button>
         </form>
+
 
 
       </div>
@@ -229,10 +315,10 @@
 
         <!-- Sidebar Footer -->
         <div class="sidebar-footer">
-          <button class="sidebar-nav-btn" @click="activeTab = activeTab === 'chat' ? 'audit' : 'chat'">
+          <!-- <button class="sidebar-nav-btn" @click="activeTab = activeTab === 'chat' ? 'audit' : 'chat'">
             <Activity :size="16" />
             <span>{{ activeTab === 'chat' ? 'Ver Bitácora de Auditoría' : 'Volver al Chat' }}</span>
-          </button>
+          </button> -->
 
           <div class="user-profile">
             <div class="user-avatar" :style="currentUser?.imageUrl ? `background-image: url(${currentUser.imageUrl}); background-size: cover; text-indent: -9999px;` : ''">
@@ -604,7 +690,9 @@ import {
   Terminal,
   RefreshCw,
   Menu,
-  X
+  X,
+  Eye,
+  EyeOff
 } from '@lucide/vue';
 
 export default {
@@ -624,7 +712,9 @@ export default {
     Terminal,
     RefreshCw,
     Menu,
-    X
+    X,
+    Eye,
+    EyeOff
   },
   data() {
     return {
@@ -636,9 +726,11 @@ export default {
       // o, en su defecto, el mismo origen. NO configurable en runtime.
       backendUrl: import.meta.env.VITE_BACKEND_URL || window.location.origin,
 
-      // API publica de SwingTails: el login y el REGISTRO van DIRECTO contra
-      // ella (no pasan por el backend del agente, que solo consume el JWT).
-      apiBase: 'https://swingtails-api-yz02.onrender.com',
+      // API publica de SwingTails: en desarrollo (npm run dev) usa el proxy de Vite ('')
+      // para evitar bloqueos de CORS del navegador hacia Render. En producción usa VITE_API_BASE o la URL de Render.
+      apiBase: import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? '' : 'https://swingtails-api-yz02.onrender.com'),
+      
+      // apiBase: import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? '' : 'http://localhost:3001'),
 
       // Pantalla de acceso: 'login' | 'register'. El registro se agrego para
       // que gente externa pueda crear su cuenta y probar el agente sin
@@ -647,6 +739,13 @@ export default {
 
       email: '',
       password: '',
+      showLoginPassword: false,
+
+      // Formulario de recuperación de contraseña (POST /api/auth/forgot-password)
+      forgotEmail: '',
+      forgotLoading: false,
+      forgotError: '',
+      forgotSuccess: '',
 
       // Formulario de registro (POST /api/auth/register: name, email y password
       // son obligatorios; phone_number es opcional).
@@ -655,6 +754,8 @@ export default {
       regPhone: '',
       regPassword: '',
       regPassword2: '',
+      showRegPassword: false,
+      showRegPassword2: false,
       registerLoading: false,
       registerError: '',
       // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
@@ -815,8 +916,53 @@ export default {
       this.authMode = mode;
       this.loginError = '';
       this.registerError = '';
+      this.forgotError = '';
+      this.forgotSuccess = '';
+      this.forgotLoading = false;
+      this.showLoginPassword = false;
+      this.showRegPassword = false;
+      this.showRegPassword2 = false;
+      if (mode === 'forgot' && this.email) {
+        this.forgotEmail = this.email;
+      }
       // Reinicia los "tocados": al volver al registro no debe aparecer en rojo.
       Object.keys(this.touched).forEach(k => { this.touched[k] = false; });
+    },
+
+    // Solicitud de restablecimiento de contraseña
+    async handleForgotPassword() {
+      this.forgotError = '';
+      this.forgotSuccess = '';
+
+      const targetEmail = (this.forgotEmail || '').trim();
+      if (!targetEmail) {
+        this.forgotError = 'Escribe tu correo electrónico.';
+        return;
+      }
+
+      this.forgotLoading = true;
+      try {
+        const response = await fetch(`${this.apiBase}/api/auth/forgot-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: targetEmail })
+        });
+
+        const resData = await response.json();
+        if (!response.ok || resData.status === 'error') {
+          throw new Error(resData.message || 'No se pudo enviar el correo de recuperación.');
+        }
+
+        this.forgotSuccess = resData.message || 'Se ha enviado un correo con las instrucciones para restablecer tu contraseña.';
+      } catch (err) {
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+          this.forgotError = 'No se pudo conectar con el servidor. Verifica tu conexión a internet o intenta más tarde.';
+        } else {
+          this.forgotError = err.message;
+        }
+      } finally {
+        this.forgotLoading = false;
+      }
     },
 
     // Registro de un usuario NUEVO contra la API de SwingTails.
@@ -872,24 +1018,41 @@ export default {
           throw new Error(apiMsg);
         }
 
-        // Cuenta creada -> login automatico con las mismas credenciales.
-        this.email = body.email;
-        this.password = this.regPassword;
-        await this.handleLogin();
+        // Extraemos accessToken y refreshToken devueltos directamente por la API de registro
+        const dataObj = resData.data || {};
+        const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
+        const refresh = dataObj.refreshToken || resData.refreshToken;
+        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
 
-        if (this.isLoggedIn) {
-          // Limpiamos el formulario (la contraseña no se queda en memoria).
+        // Snapshot en memoria para re-login silencioso
+        this.savedEmail = body.email;
+        this.savedPassword = this.regPassword;
+
+        if (token) {
+          // La API entregó token en el registro: iniciamos sesión directamente sin 2do fetch
+          this.setLoginSession(token);
           this.regName = this.regEmail = this.regPhone = '';
           this.regPassword = this.regPassword2 = '';
         } else {
-          // La cuenta SI se creo, pero el login automatico fallo (p.ej. la API
-          // tardo o el token no llego). No es un fallo del registro: mandamos al
-          // usuario a la pestaña de login con su correo ya puesto.
-          this.authMode = 'login';
-          this.loginError = 'Tu cuenta se creó correctamente. Inicia sesión para continuar.';
+          // Fallback si la API no entrega token en el registro
+          this.email = body.email;
+          this.password = this.regPassword;
+          await this.handleLogin();
+
+          if (this.isLoggedIn) {
+            this.regName = this.regEmail = this.regPhone = '';
+            this.regPassword = this.regPassword2 = '';
+          } else {
+            this.authMode = 'login';
+            this.loginError = 'Tu cuenta se creó correctamente. Inicia sesión para continuar.';
+          }
         }
       } catch (err) {
-        this.registerError = err.message;
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+          this.registerError = 'No se pudo procesar el registro. Intenta de nuevo en unos segundos.';
+        } else {
+          this.registerError = err.message;
+        }
       } finally {
         this.registerLoading = false;
       }
@@ -935,7 +1098,11 @@ export default {
 
         this.setLoginSession(token);
       } catch (err) {
-        this.loginError = err.message;
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+          this.loginError = 'No se pudo conectar con la API de SwingTails (Failed to fetch). Verifica tu conexión o intenta en unos segundos (Render cold start).';
+        } else {
+          this.loginError = err.message;
+        }
       } finally {
         this.loginLoading = false;
       }

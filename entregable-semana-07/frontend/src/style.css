@@ -206,7 +206,7 @@ body {
   font-size: 1.8rem;
   font-weight: 800;
   letter-spacing: -0.5px;
-  background: var(--accent-gradient);
+  background: var(--custom-beige);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -249,7 +249,7 @@ body {
 }
 
 .auth-tab.active {
-  background: var(--accent-gradient);
+  background: var(--custom-brown);
   color: #fff;
 }
 
@@ -360,6 +360,10 @@ body {
     margin-bottom: 16px;
   }
 
+  .forgot-password {
+    justify-content: flex-end;
+  }
+
   /* OJO: no bajar de 16px. Con font-size menor, iOS Safari hace ZOOM
      automatico al enfocar un input y descuadra toda la pantalla. */
   .form-input {
@@ -465,9 +469,40 @@ body {
   box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
 }
 
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-wrapper .form-input {
+  padding-right: 44px;
+}
+
+.btn-toggle-pwd {
+  position: absolute;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: var(--transition-fast);
+}
+
+.btn-toggle-pwd:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .btn-primary {
   width: 100%;
-  background: var(--accent-gradient);
+  background: var(--custom-brown);
   border: none;
   border-radius: 12px;
   padding: 14px;
@@ -567,7 +602,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--accent-gradient);
+  background: var(--custom-beige);
   border: none;
   border-radius: 12px;
   color: white;
