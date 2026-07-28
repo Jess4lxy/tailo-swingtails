@@ -96,4 +96,6 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=10 \
 # config.py calcula ROOT = padre de src/ = /app, asi que corpus/chroma_db/data
 # y .env quedan en las rutas correctas al ejecutar desde /app/src.
 WORKDIR /app/src
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-server-header: uvicorn NO envia su cabecera "Server: uvicorn" (M-03); el
+# middleware de server.py pone una neutra "SwingTails".
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]

@@ -88,6 +88,11 @@ def _normalize_ollama_host(raw: str) -> str:
 OLLAMA_HOST = _normalize_ollama_host(os.getenv("OLLAMA_HOST", "http://localhost:11434"))
 EMBED_MODEL = "nomic-embed-text"
 
+# Timeout del cliente Ollama (circuit-breaker-lite, reporte de seguridad #18):
+# si la generacion del LLM se cuelga, la peticion falla en vez de bloquear el
+# hilo indefinidamente. Generoso para no cortar generaciones largas legitimas.
+OLLAMA_TIMEOUT = int(os.getenv("TAILO_OLLAMA_TIMEOUT", "300"))  # segundos
+
 # Modelo afinado para herramientas (Llama 3.1 8B soporta tool_calls nativos
 # segun la guia oficial de Ollama; ver rubrica fase 2).
 LLM_MODEL = "tailo-agent"
@@ -171,13 +176,31 @@ WHISPER_LANGUAGE = os.getenv("TAILO_WHISPER_LANGUAGE", "es")
 # ---------------------------------------------------------------------------
 # CORS (el frontend de la semana 05 corre en otro origen)
 # ---------------------------------------------------------------------------
-# Lista separada por comas; "*" permite cualquier origen (comodo en desarrollo
-# local con Vite/Live Server). En produccion se restringe al dominio del front.
+# Lista separada por comas. Reporte de seguridad (A-02): por DEFECTO ya NO es
+# "*" abierto; se restringe a los origenes conocidos (el frontend en Render y
+# los de desarrollo local). Se puede sobreescribir con TAILO_CORS_ORIGINS
+# (usa "*" solo si de verdad lo necesitas en pruebas).
+_DEFAULT_CORS = (
+    "https://tailo-swingtails.onrender.com,"
+    "http://localhost:8080,http://localhost:5173,http://localhost:5174,"
+    "http://127.0.0.1:8080,http://127.0.0.1:5173,http://127.0.0.1:5174"
+)
 CORS_ORIGINS = [
     o.strip()
-    for o in os.getenv("TAILO_CORS_ORIGINS", "*").split(",")
+    for o in os.getenv("TAILO_CORS_ORIGINS", _DEFAULT_CORS).split(",")
     if o.strip()
 ]
+
+# ---------------------------------------------------------------------------
+# Rate limiting del AI agent (reporte de seguridad #17 / C-03)
+# ---------------------------------------------------------------------------
+# Limite por USUARIO (id del JWT) en ventana deslizante. Evita abuso del LLM y
+# fuerza-bruta contra los endpoints del agente. Detras de ngrok/Cloudflare la IP
+# es la del proxy, por eso limitamos por usuario autenticado, no por IP.
+RATE_LIMIT_ENABLED = os.getenv("TAILO_RATE_LIMIT_ENABLED", "1") not in {"0", "false", "False"}
+RATE_LIMIT_WINDOW = int(os.getenv("TAILO_RATE_LIMIT_WINDOW", "60"))       # segundos
+RATE_LIMIT_CHAT = int(os.getenv("TAILO_RATE_LIMIT_CHAT", "20"))          # chats/ventana
+RATE_LIMIT_TRANSCRIBE = int(os.getenv("TAILO_RATE_LIMIT_TRANSCRIBE", "15"))  # audios/ventana
 
 # ---------------------------------------------------------------------------
 # Frontend estatico servido por el MISMO backend (opcional)

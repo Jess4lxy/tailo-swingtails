@@ -42,7 +42,7 @@
               @blur="touched.name = true"
             />
             <p v-if="touched.name && !nameValid" class="field-error">
-              Escribe tu nombre (mínimo 3 caracteres).
+              Escribe tu nombre (mínimo 3 caracteres, sin los símbolos &lt; ni &gt;).
             </p>
           </div>
 
@@ -629,12 +629,12 @@ export default {
   data() {
     return {
       // Configuration
-      // URL del backend, resuelta en este orden:
-      //   1) lo guardado en la UI de ajustes (localStorage), si el usuario lo fijo;
-      //   2) VITE_BACKEND_URL inyectada en build (arquitectura HIBRIDA: el front en
-      //      Render apunta a la URL de ngrok del backend local);
-      //   3) el mismo origen (modo dockerizado: nginx sirve web + proxy a la API).
-      backendUrl: localStorage.getItem('swingtails_backend_url') || import.meta.env.VITE_BACKEND_URL || window.location.origin,
+      // URL del backend del AI agent. Reporte de seguridad (A-04): ANTES se leia
+      // de localStorage, lo que permitia a un XSS (o al propio usuario) redirigir
+      // el backend a un servidor atacante y robar conversaciones/credenciales.
+      // AHORA es FIJA en el build: solo VITE_BACKEND_URL (inyectada al compilar)
+      // o, en su defecto, el mismo origen. NO configurable en runtime.
+      backendUrl: import.meta.env.VITE_BACKEND_URL || window.location.origin,
 
       // API publica de SwingTails: el login y el REGISTRO van DIRECTO contra
       // ella (no pasan por el backend del agente, que solo consume el JWT).
@@ -747,7 +747,10 @@ export default {
       return !!this.regPassword && this.regPassword === this.regPassword2;
     },
     nameValid() {
-      return this.regName.trim().length >= 3;
+      const n = this.regName.trim();
+      // (C-05) Rechaza < y > en el nombre para no enviar payloads XSS
+      // (<script>...). Vue ya escapa al renderizar, pero validamos en origen.
+      return n.length >= 3 && !/[<>]/.test(this.regName);
     },
     emailValid() {
       return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(this.regEmail.trim());
@@ -775,9 +778,8 @@ export default {
     }
   },
   watch: {
-    backendUrl(newVal) {
-      localStorage.setItem('swingtails_backend_url', newVal);
-    },
+    // (A-04) Se elimino el watcher que persistia backendUrl en localStorage:
+    // la URL del backend ya es fija en el build y no debe poder cambiarse.
     activeTab(newTab) {
       if (newTab === 'audit') {
         this.loadAuditData();
@@ -841,7 +843,9 @@ export default {
       this.registerLoading = true;
       try {
         const body = {
-          name: this.regName.trim(),
+          // (C-05) Sanitiza el nombre en origen: quita < > y comillas para no
+          // enviar HTML/JS al backend (defensa en profundidad ante XSS).
+          name: this.regName.trim().replace(/[<>"'`]/g, ''),
           email: this.regEmail.trim(),
           password: this.regPassword
         };

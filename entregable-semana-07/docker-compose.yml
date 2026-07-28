@@ -35,9 +35,11 @@ services:
       # Motor de inferencia en el HOST (config hibrida). Esta variable SOBREESCRIBE
       # la del .env, que dentro del contenedor apuntaria a si mismo.
       OLLAMA_HOST: "http://host.docker.internal:11434"
-      # CORS permisivo: como el front va por el mismo origen (nginx) casi no
-      # aplica, pero lo dejamos abierto para pegarle directo a la API en pruebas.
-      TAILO_CORS_ORIGINS: "*"
+      # CORS restringido (reporte de seguridad A-02): solo el frontend en Render
+      # y los origenes locales. En el modo dockerizado el front va por el mismo
+      # origen (nginx), asi que CORS casi no aplica; esto protege el acceso
+      # directo a la API por navegador desde origenes no autorizados.
+      TAILO_CORS_ORIGINS: "https://tailo-swingtails.onrender.com,http://localhost:8080,http://localhost:5173,http://localhost:5174"
       # Rutas de persistencia dentro del contenedor (coinciden con los volumenes).
       TAILO_OBSERVABILITY_DB: "/app/data/observability.db"
       TAILO_SESSIONS_DB: "/app/data/sessions.db"

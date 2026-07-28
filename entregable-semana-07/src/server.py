@@ -51,6 +51,11 @@ from config import (
     CORS_ORIGINS,
     LLM_MODEL,
     OLLAMA_HOST,
+    OLLAMA_TIMEOUT,
+    RATE_LIMIT_CHAT,
+    RATE_LIMIT_ENABLED,
+    RATE_LIMIT_TRANSCRIBE,
+    RATE_LIMIT_WINDOW,
     TOP_K,
     WEB_DIST,
     WHISPER_COMPUTE,
@@ -69,6 +74,58 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Cabeceras de seguridad en TODAS las respuestas (reporte de seguridad #20, M-03,
+# B-02). Endurecen el navegador y ocultan la tecnologia del servidor.
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    # La app USA geolocalizacion y microfono (voz): se permiten a si misma.
+    response.headers["Permissions-Policy"] = "geolocation=(self), microphone=(self), camera=()"
+    # Oculta uvicorn/servidor subyacente (M-03).
+    response.headers["Server"] = "SwingTails"
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting por usuario (reporte de seguridad #17 / C-03). Ventana
+# deslizante en memoria: {clave -> [timestamps]}. Suficiente para un despliegue
+# de un proceso; evita abuso del LLM y fuerza-bruta contra el agente.
+# ---------------------------------------------------------------------------
+_rate_buckets: dict[str, list[float]] = {}
+
+
+def _rate_limit_ok(key: str, max_req: int, window_s: int = RATE_LIMIT_WINDOW) -> bool:
+    """True si la peticion cabe dentro del limite; False si se excedio."""
+    if not RATE_LIMIT_ENABLED:
+        return True
+    now = time.time()
+    cutoff = now - window_s
+    q = _rate_buckets.setdefault(key, [])
+    while q and q[0] < cutoff:
+        q.pop(0)
+    if len(q) >= max_req:
+        return False
+    q.append(now)
+    return True
+
+
+def _enforce_rate_limit(user_id: int, bucket: str, max_req: int) -> None:
+    """Lanza HTTP 429 si el usuario supero su limite en este endpoint."""
+    if not _rate_limit_ok(f"{bucket}:{user_id}", max_req):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Demasiadas solicitudes en poco tiempo. Espera un momento "
+                "antes de volver a intentar."
+            ),
+        )
 
 # Recursos compartidos entre peticiones (solo lectura / concurrencia segura):
 # se crean una vez. El orquestador reutiliza el mismo Retriever (embeddings +
@@ -95,7 +152,11 @@ def _retriever() -> Retriever:
 def _ollama() -> ollama.Client:
     global _OLLAMA
     if _OLLAMA is None:
-        _OLLAMA = ollama.Client(host=OLLAMA_HOST)
+        # timeout: si Ollama se cuelga, la peticion falla en vez de bloquear el
+        # hilo para siempre (reporte de seguridad #18). El cliente lo propaga a
+        # httpx. Todo el pipeline de chat usa ESTE cliente (el orquestador lo
+        # recibe), asi que el timeout cubre toda la generacion.
+        _OLLAMA = ollama.Client(host=OLLAMA_HOST, timeout=OLLAMA_TIMEOUT)
     return _OLLAMA
 
 
@@ -275,6 +336,7 @@ def health() -> dict:
 def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> ChatResponse:
     user_id, ctx_token = _authed_user_id(authorization)
     try:
+        _enforce_rate_limit(user_id, "chat", RATE_LIMIT_CHAT)
         done = None
         for ev in _run_turn_pipeline(req, user_id):
             if ev.get("type") == "done":
@@ -324,6 +386,7 @@ async def chat_stream(
         event: error   -> {message}
     """
     client, user_id = _validate_token(authorization)
+    _enforce_rate_limit(user_id, "chat", RATE_LIMIT_CHAT)
 
     async def event_gen():
         # El pipeline es sincrono (Ollama + tools + SQLite) y usa el ContextVar
@@ -393,7 +456,8 @@ async def transcribe(
     authorization: str | None = Header(default=None),
 ) -> TranscriptionResponse:
     """Transcribe un audio (multipart 'audio') a texto con Whisper local."""
-    _validate_token(authorization)  # mismas credenciales que el chat
+    _client, _uid = _validate_token(authorization)  # mismas credenciales que el chat
+    _enforce_rate_limit(_uid, "transcribe", RATE_LIMIT_TRANSCRIBE)
     data = await audio.read()
     if not data:
         raise HTTPException(status_code=400, detail="Audio vacio")
@@ -546,4 +610,4 @@ else:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False, server_header=False)

@@ -105,6 +105,16 @@ _RAW_PATTERNS: list[tuple[str, str]] = [
     ("authority", r"\bsoy (el |la |un |una |su )?(administrador|admin|superusuario|super usuario|root|desarrollador|developer|ingeniero|programador|hacker)\b.{0,35}\b(sistema|tailo|swingtails|servidor|base de datos|backend|codigo|prompt|instruccion(es)?|acceso|permiso|configuracion|interno)\b"),
     ("authority", r"\bsoy (el |la |tu )?(creador|desarrollador|dueno|programador|ingeniero)\b.{0,18}\b(de tailo|del sistema|de swingtails|del agente|del backend|de esta ia)\b"),
     ("authority", r"\bcomo (administrador|admin|superusuario|root|desarrollador)\b.{0,25}\b(dame|muestra|revela|accede|entra|desbloquea|ignora|elimina|borra)\b"),
+
+    # --- Multilingue: variantes en INGLES de los ataques (reporte #16) -----
+    ("jailbreak", r"\bignore\b.{0,25}\b(all|any|the)?\s*(previous|prior|above|earlier|system)\s*(instructions?|prompts?|rules?|messages?)\b"),
+    ("jailbreak", r"\b(forget|disregard|override|bypass)\b.{0,20}\b(your|all|the|previous)?\s*(instructions?|rules?|restrictions?|guardrails?|system prompt)\b"),
+    ("jailbreak", r"\b(you are|you're|act as|pretend to be|roleplay as|behave as|from now on you are)\b.{0,25}\b(dan|a different|an unrestricted|no restrictions|jailbroken|developer mode|do anything now)\b"),
+    ("jailbreak", r"\b(enable|activate|enter|switch to|turn on)\b.{0,15}\b(developer|dev|god|admin|root|jailbreak|unrestricted|sudo)\s*mode\b"),
+    ("instruction_leak", r"\b(show|reveal|print|repeat|reprint|display|expose|leak|give me|what (is|are))\b.{0,30}\b(your )?(system prompt|initial prompt|instructions?|system message|hidden (prompt|instructions?)|rules?|guidelines?|configuration)\b"),
+    ("code_leak", r"\b(show|give|send|print|reveal|leak|dump|paste)\b.{0,25}\b(your )?(source code|code|env( file)?|\.env|api keys?|secret keys?|credentials|tokens?|database (schema|structure)|system files?)\b"),
+    ("authority", r"\bi('m| am)\b.{0,15}\b(the |an |your )?(admin(istrator)?|developer|superuser|root|owner|creator|engineer|sysadmin)\b.{0,35}\b(system|server|database|backend|code|prompt|access|grant|give me|reveal|show)\b"),
+    ("authority", r"\bgrant\b.{0,15}\b(me )?\b(admin|root|superuser|elevated|full)\s*(access|privileges?|permissions?|rights?)\b"),
 ]
 
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
