@@ -761,13 +761,13 @@ export default {
       // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
       // Asi el formulario no aparece en rojo desde el primer segundo.
       touched: { name: false, email: false, phone: false, password: false, password2: false },
-      // Credenciales guardadas SOLO EN MEMORIA (nunca en localStorage) para el
-      // re-login silencioso cuando el access token vence (~30 min) mientras la
-      // pestaña sigue abierta. Se pierden al recargar la pagina (a proposito:
-      // no dejamos la contraseña en disco). Se limpian al cerrar sesion.
-      savedEmail: '',
-      savedPassword: '',
-      jwt: localStorage.getItem('swingtails_jwt') || '',
+      // (H-03) El Access Token vive SOLO en memoria (estado de Vue), NUNCA en
+      // localStorage: asi un XSS no puede robar la sesion persistente. El Refresh
+      // Token lo guarda la Auth API en una cookie HttpOnly (invisible a JS) y con
+      // ella renovamos el Access Token al cargar la pagina (silentReauth).
+      // Por eso YA NO guardamos email/password en memoria: el refresh usa la
+      // cookie, no las credenciales.
+      jwt: '',
       manualJwt: '',
       currentUserId: null,
       currentUser: null,
@@ -887,18 +887,14 @@ export default {
       }
     }
   },
-  mounted() {
-    // Re-verify login if JWT is present
-    if (this.jwt) {
-      if (this.isJwtExpired(this.jwt)) {
-        this.forceReauth('Tu sesión expiró. Inicia sesión de nuevo para continuar.');
-      } else {
-        this.decodeAndValidateManualJwt(this.jwt);
-      }
-    }
-    
+  async mounted() {
+    // (H-03) Auto-login SIN localStorage: al cargar la pagina intentamos renovar
+    // el Access Token usando el Refresh Token que la Auth API guardo en una
+    // cookie HttpOnly. Si funciona, entramos directo; si no (sin cookie valida),
+    // se muestra la pantalla de login. Asi la sesion persiste tras F5 sin dejar
+    // el token en disco.
+    await this.silentReauth(true);
 
-    
     // Auto focus text input on start
     this.$nextTick(() => {
       this.focusInput();
@@ -989,9 +985,11 @@ export default {
       this.registerLoading = true;
       try {
         const body = {
-          // (C-05) Sanitiza el nombre en origen: quita < > y comillas para no
-          // enviar HTML/JS al backend (defensa en profundidad ante XSS).
-          name: this.regName.trim().replace(/[<>"'`]/g, ''),
+          // (M-01) Sanitizacion por LISTA BLANCA: solo letras (con acentos),
+          // numeros, espacios, punto y guion. Elimina TODO lo demas (< > " ' &
+          // ( ) ; / \ etc.) para no enviar HTML/JS ni caracteres peligrosos.
+          // Nota: la sanitizacion real debe hacerla tambien el backend (Auth API).
+          name: this.regName.trim().replace(/[^\p{L}\p{N}\s.\-]/gu, '').slice(0, 80),
           email: this.regEmail.trim(),
           password: this.regPassword
         };
@@ -999,6 +997,7 @@ export default {
 
         const response = await fetch(`${this.apiBase}/api/auth/register`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
@@ -1018,34 +1017,19 @@ export default {
           throw new Error(apiMsg);
         }
 
-        // Extraemos accessToken y refreshToken devueltos directamente por la API de registro
-        const dataObj = resData.data || {};
-        const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
-        const refresh = dataObj.refreshToken || resData.refreshToken;
-        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
+        // (H-03) Cuenta creada -> iniciamos sesion con LOGIN normal para que la
+        // Auth API entregue la cookie HttpOnly del Refresh Token (el endpoint de
+        // registro podria no setearla). El Access Token queda solo en memoria.
+        this.email = body.email;
+        this.password = this.regPassword;
+        await this.handleLogin();
 
-        // Snapshot en memoria para re-login silencioso
-        this.savedEmail = body.email;
-        this.savedPassword = this.regPassword;
-
-        if (token) {
-          // La API entregó token en el registro: iniciamos sesión directamente sin 2do fetch
-          this.setLoginSession(token);
+        if (this.isLoggedIn) {
           this.regName = this.regEmail = this.regPhone = '';
           this.regPassword = this.regPassword2 = '';
         } else {
-          // Fallback si la API no entrega token en el registro
-          this.email = body.email;
-          this.password = this.regPassword;
-          await this.handleLogin();
-
-          if (this.isLoggedIn) {
-            this.regName = this.regEmail = this.regPhone = '';
-            this.regPassword = this.regPassword2 = '';
-          } else {
-            this.authMode = 'login';
-            this.loginError = 'Tu cuenta se creó correctamente. Inicia sesión para continuar.';
-          }
+          this.authMode = 'login';
+          this.loginError = 'Tu cuenta se creó correctamente. Inicia sesión para continuar.';
         }
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
@@ -1065,6 +1049,9 @@ export default {
       try {
         const response = await fetch(`${this.apiBase}/api/auth/login`, {
           method: 'POST',
+          // (H-03) credentials:'include' permite que el navegador GUARDE la
+          // cookie HttpOnly del Refresh Token que envia la Auth API (Set-Cookie).
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json'
           },
@@ -1085,17 +1072,8 @@ export default {
           throw new Error('No se devolvió un token de acceso desde el servidor');
         }
 
-        // Guardamos también el refreshToken. Hoy la API de SwingTails NO tiene
-        // un refresh funcional (POST /api/auth/refresh-token responde
-        // "Token mismatch"), pero lo persistimos para poder canjearlo cuando el
-        // equipo de la API corrija ese endpoint, sin volver a tocar el front.
-        const refresh = dataObj.refreshToken || resData.refreshToken;
-        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
-
-        // Snapshot en memoria para el re-login silencioso (no toca localStorage).
-        this.savedEmail = this.email;
-        this.savedPassword = this.password;
-
+        // (H-03) El Refresh Token viaja en la cookie HttpOnly (NO se toca desde
+        // JS). El Access Token se guarda SOLO en memoria (setLoginSession).
         this.setLoginSession(token);
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
@@ -1150,20 +1128,22 @@ export default {
         this.loginError = 'Formato de JWT inválido o no contiene información de usuario';
         this.isLoggedIn = false;
         this.jwt = '';
-        localStorage.removeItem('swingtails_jwt');
       }
     },
     setLoginSession(token) {
+      // (H-03) Access Token SOLO en memoria; nunca en localStorage.
       this.jwt = token;
-      localStorage.setItem('swingtails_jwt', token);
-      
+
       const user = this.mapUserFromToken(token);
-      if (user) {
+      if (user && user.id) {
         this.currentUser = user;
         this.currentUserId = user.id;
       } else {
-        this.currentUser = null;
-        this.currentUserId = 99;
+        // (M-02) Antes se ponia currentUserId = 99 (un id falso que podia
+        // colisionar con un usuario real). Si el token no trae id valido, el
+        // token esta roto -> no iniciamos sesion, forzamos reautenticacion.
+        this.forceReauth('No se pudo validar tu sesión. Inicia sesión de nuevo.');
+        return;
       }
 
       this.isLoggedIn = true;
@@ -1178,6 +1158,17 @@ export default {
       });
     },
     handleLogout() {
+      // (H-03) Pide a la Auth API que INVALIDE la cookie HttpOnly del Refresh
+      // Token (Set-Cookie de borrado). credentials:'include' envia la cookie.
+      // Es fire-and-forget: no bloqueamos el cierre de sesion si la red falla.
+      try {
+        fetch(`${this.apiBase}/api/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(() => {});
+      } catch (e) { /* ignore */ }
+
       this.isLoggedIn = false;
       this.jwt = '';
       this.currentUser = null;
@@ -1185,13 +1176,8 @@ export default {
       this.messages = [];
       this.conversations = [];
       this.activeConversationId = null;
-      // Olvidar credenciales en memoria: sin esto el re-login silencioso
-      // reautenticaria justo despues de cerrar sesion.
-      this.savedEmail = '';
-      this.savedPassword = '';
       this.password = '';
-      localStorage.removeItem('swingtails_jwt');
-      localStorage.removeItem('swingtails_refresh');
+      // Ya no guardamos el token en localStorage; solo limpiamos el resto.
       localStorage.removeItem('swingtails_active_conv');
     },
 
@@ -1210,33 +1196,35 @@ export default {
       }
     },
 
-    // Re-login SILENCIOSO: como la API no tiene refresh funcional, si tenemos
-    // las credenciales en memoria volvemos a autenticar sin molestar al usuario.
-    // Devuelve true si consiguió un token nuevo y válido. NO recarga la vista ni
-    // las conversaciones: solo renueva el token en curso.
-    async silentReauth() {
-      if (!this.savedEmail || !this.savedPassword) return false;
+    // (H-03) Renovacion SILENCIOSA del Access Token usando el Refresh Token de
+    // la cookie HttpOnly. NO usa email/password. Devuelve true si obtuvo un token
+    // valido. `fullSetup=true` (al cargar la app) ademas entra a la sesion y
+    // carga las conversaciones; en caliente (retry por 401) solo renueva el token
+    // sin recargar la vista para no interrumpir un mensaje en curso.
+    async silentReauth(fullSetup = false) {
       try {
-        const response = await fetch(`${this.apiBase}/api/auth/login`, {
+        const response = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
           method: 'POST',
+          credentials: 'include',            // envia la cookie HttpOnly del refresh
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: this.savedEmail, password: this.savedPassword })
         });
+        if (!response.ok) return false;
         const resData = await response.json();
-        if (!response.ok || resData.status === 'error') return false;
+        if (resData.status === 'error') return false;
         const dataObj = resData.data || {};
         const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
         if (!token || this.isJwtExpired(token)) return false;
 
-        const refresh = dataObj.refreshToken || resData.refreshToken;
-        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
-
-        // Actualización mínima del token (sin loadConversationsList ni reset).
-        this.jwt = token;
-        localStorage.setItem('swingtails_jwt', token);
-        const user = this.mapUserFromToken(token);
-        if (user) { this.currentUser = user; this.currentUserId = user.id; }
-        this.isLoggedIn = true;
+        if (fullSetup) {
+          // Primer arranque: sesion completa (decodifica usuario, carga chats).
+          this.setLoginSession(token);
+        } else {
+          // Renovacion en caliente: solo el token en memoria.
+          this.jwt = token;
+          const user = this.mapUserFromToken(token);
+          if (user && user.id) { this.currentUser = user; this.currentUserId = user.id; }
+          this.isLoggedIn = true;
+        }
         return true;
       } catch (e) {
         console.error('Silent re-auth falló:', e);

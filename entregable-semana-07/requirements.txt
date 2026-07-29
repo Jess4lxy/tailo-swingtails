@@ -23,6 +23,9 @@ fpdf2==2.8.1
 # (https://swingtails-api-yz02.onrender.com)
 requests==2.32.3
 
+# Verificacion de firma JWT (reporte de seguridad C-01: rechazar alg:none).
+PyJWT==2.9.0
+
 # Carga de variables de entorno (JWT, base URL)
 python-dotenv==1.0.1
 
