@@ -266,5 +266,42 @@ API_EMAIL = os.getenv("SWINGTAILS_EMAIL", "").strip() or None
 API_PASSWORD = os.getenv("SWINGTAILS_PASSWORD", "").strip() or None
 API_JWT = os.getenv("SWINGTAILS_JWT", "").strip() or None
 
+# ---------------------------------------------------------------------------
+# Verificacion de firma JWT (reporte de seguridad C-01: alg:none bypass)
+# ---------------------------------------------------------------------------
+# El JWT lo firma la Auth API (HS256). Para VERIFICAR la firma (y no solo leer
+# el payload) nuestro backend necesita el MISMO secreto. Pidelo al equipo de la
+# Auth API y ponlo en SWINGTAILS_JWT_SECRET. Con el secreto: verificacion
+# completa. SIN el secreto: igual se RECHAZA alg:none / tokens sin firma (mata
+# el exploit demostrado), pero la firma no se puede validar criptograficamente
+# (mitigacion parcial). Los algoritmos 'none' quedan PROHIBIDOS siempre.
+JWT_SECRET = os.getenv("SWINGTAILS_JWT_SECRET", "").strip() or None
+JWT_ALGORITHMS = [
+    a.strip() for a in os.getenv("SWINGTAILS_JWT_ALGS", "HS256").split(",") if a.strip()
+]
+
+# ---------------------------------------------------------------------------
+# Administradores del AI agent (reporte C-03: /observability/* solo admin)
+# ---------------------------------------------------------------------------
+# Lista de user_id (del JWT) autorizados a ver la bitacora de observabilidad
+# (datos de TODOS los usuarios). Vacio = nadie: los endpoints devuelven 403.
+# Para la demo del panel de auditoria, pon aqui el id de tu usuario admin.
+ADMIN_USER_IDS = {
+    int(x) for x in os.getenv("TAILO_ADMIN_USER_IDS", "").replace(" ", "").split(",")
+    if x.strip().isdigit()
+}
+
+# ---------------------------------------------------------------------------
+# Documentacion interactiva (reporte C-04: Swagger/OpenAPI expuestos)
+# ---------------------------------------------------------------------------
+# Por defecto DESHABILITADA (produccion): /docs, /redoc y /openapi.json no se
+# exponen. Ponla en 1 solo para inspeccionar en local.
+ENABLE_DOCS = os.getenv("TAILO_ENABLE_DOCS", "0") in {"1", "true", "True"}
+
+# ---------------------------------------------------------------------------
+# Validacion de subida de audio (reporte C-05: /transcribe 500 con basura)
+# ---------------------------------------------------------------------------
+TRANSCRIBE_MAX_BYTES = int(os.getenv("TAILO_TRANSCRIBE_MAX_BYTES", str(15_000_000)))  # 15 MB
+
 # Timeout corto para evitar congelar el agente si Render esta dormido.
 API_TIMEOUT = 30  # segundos

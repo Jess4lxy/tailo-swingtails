@@ -797,12 +797,9 @@ export default {
       // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
       // Asi el formulario no aparece en rojo desde el primer segundo.
       touched: { name: false, email: false, phone: false, password: false, password2: false },
-      // Credenciales guardadas SOLO EN MEMORIA (nunca en localStorage) para el
-      // re-login silencioso cuando el access token vence (~30 min) mientras la
-      // pestaña sigue abierta. Se pierden al recargar la pagina (a proposito:
-      // no dejamos la contraseña en disco). Se limpian al cerrar sesion.
-      savedEmail: '',
-      savedPassword: '',
+      // (H-03) El Access Token vive SOLO en memoria (nunca en localStorage). El
+      // Refresh Token lo guarda la Auth API en cookie HttpOnly y con ella se
+      // renueva (silentReauth). Ya NO guardamos email/password.
       jwt: '',
       manualJwt: '',
       currentUserId: null,
@@ -1043,9 +1040,11 @@ export default {
       this.registerLoading = true;
       try {
         const body = {
-          // (C-05) Sanitiza el nombre en origen: quita < > y comillas para no
-          // enviar HTML/JS al backend (defensa en profundidad ante XSS).
-          name: this.regName.trim().replace(/[<>"'`]/g, ''),
+          // (M-01) Sanitizacion por LISTA BLANCA: solo letras (con acentos),
+          // numeros, espacios, punto y guion. Elimina TODO lo demas (< > " ' &
+          // ( ) ; / \ etc.) para no enviar HTML/JS ni caracteres peligrosos.
+          // Nota: la sanitizacion real debe hacerla tambien el backend (Auth API).
+          name: this.regName.trim().replace(/[^\p{L}\p{N}\s.\-]/gu, '').slice(0, 80),
           email: this.regEmail.trim(),
           password: this.regPassword,
           captcha_token: this.captchaToken
@@ -1054,6 +1053,7 @@ export default {
 
         const response = await fetch(`${this.apiBase}/api/auth/register`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
@@ -1073,11 +1073,20 @@ export default {
           throw new Error(apiMsg);
         }
 
-        this.authMode = 'login';
+        // (H-03) Cuenta creada -> iniciamos sesion con LOGIN normal para que la
+        // Auth API entregue la cookie HttpOnly del Refresh Token (el endpoint de
+        // registro podria no setearla). El Access Token queda solo en memoria.
         this.email = body.email;
-        this.loginSuccess = resData.message || '¡Cuenta creada con éxito! Te hemos enviado un correo de confirmación a tu e-mail. Por favor revisa tu bandeja de entrada o carpeta de spam para activar tu cuenta antes de iniciar sesión.';
-        this.regName = this.regEmail = this.regPhone = '';
-        this.regPassword = this.regPassword2 = '';
+        this.password = this.regPassword;
+        await this.handleLogin();
+
+        if (this.isLoggedIn) {
+          this.regName = this.regEmail = this.regPhone = '';
+          this.regPassword = this.regPassword2 = '';
+        } else {
+          this.authMode = 'login';
+          this.loginError = 'Tu cuenta se creó correctamente. Inicia sesión para continuar.';
+        }
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
           this.registerError = 'No se pudo procesar el registro. Intenta de nuevo en unos segundos.';
@@ -1098,10 +1107,12 @@ export default {
       try {
         const response = await fetch(`${this.apiBase}/api/auth/login`, {
           method: 'POST',
+          // (H-03) credentials:'include' permite que el navegador GUARDE la
+          // cookie HttpOnly del Refresh Token que envia la Auth API (Set-Cookie).
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json'
           },
-          credentials: 'include',
           body: JSON.stringify({
             email: this.email,
             password: this.password
@@ -1123,13 +1134,9 @@ export default {
           throw new Error('No se devolvió un token de acceso desde el servidor');
         }
 
-        // El refreshToken ahora es una cookie HttpOnly gestionada por el backend.
-        // No almacenamos persistencia en localStorage por seguridad (H-03).
-
-        // Snapshot en memoria para el re-login silencioso (no toca localStorage).
-        this.savedEmail = this.email;
-        this.savedPassword = this.password;
-
+        // (H-03) El Refresh Token viaja en la cookie HttpOnly (no se toca desde
+        // JS). El Access Token queda SOLO en memoria (setLoginSession). No se
+        // guardan email/password: la renovacion usa la cookie, no credenciales.
         this.setLoginSession(token);
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
@@ -1253,10 +1260,11 @@ export default {
       }
     },
     setLoginSession(token) {
+      // (H-03) Access Token SOLO en memoria; nunca en localStorage.
       this.jwt = token;
       
       const user = this.mapUserFromToken(token);
-      if (user) {
+      if (user && user.id) {
         this.currentUser = user;
         this.currentUserId = user.id;
       } else {
@@ -1275,23 +1283,21 @@ export default {
         this.focusInput();
       });
     },
-    async handleLogout() {
-      const token = this.jwt;
-
-      if (token) {
-        try {
-          await fetch(`${this.apiBase}/api/auth/logout`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            credentials: 'include'
-          });
-        } catch (err) {
-          console.error('Error al notificar el cierre de sesión a la API:', err);
-        }
-      }
+    handleLogout() {
+      // (H-03) Pide a la Auth API que INVALIDE la cookie HttpOnly del Refresh
+      // Token (Set-Cookie de borrado). credentials:'include' envia la cookie.
+      // Se manda el Access Token de memoria por si el backend lo requiere.
+      // Fire-and-forget: no bloqueamos el cierre de sesion si la red falla.
+      try {
+        fetch(`${this.apiBase}/api/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
+          },
+        }).catch(() => {});
+      } catch (e) { /* ignore */ }
 
       this.isLoggedIn = false;
       this.jwt = '';
@@ -1300,10 +1306,6 @@ export default {
       this.messages = [];
       this.conversations = [];
       this.activeConversationId = null;
-      // Olvidar credenciales en memoria: sin esto el re-login silencioso
-      // reautenticaría justo después de cerrar sesión.
-      this.savedEmail = '';
-      this.savedPassword = '';
       this.password = '';
       localStorage.removeItem('swingtails_active_conv');
     },
@@ -1323,33 +1325,35 @@ export default {
       }
     },
 
-    // Re-login SILENCIOSO: como la API no tiene refresh funcional, si tenemos
-    // las credenciales en memoria volvemos a autenticar sin molestar al usuario.
-    // Devuelve true si consiguió un token nuevo y válido. NO recarga la vista ni
-    // las conversaciones: solo renueva el token en curso.
-    async silentReauth() {
-      if (!this.savedEmail || !this.savedPassword) return false;
+    // (H-03) Renovacion SILENCIOSA del Access Token usando el Refresh Token de
+    // la cookie HttpOnly. NO usa email/password. Devuelve true si obtuvo un token
+    // valido. `fullSetup=true` (al cargar la app) ademas entra a la sesion y
+    // carga las conversaciones; en caliente (retry por 401) solo renueva el token
+    // sin recargar la vista para no interrumpir un mensaje en curso.
+    async silentReauth(fullSetup = false) {
       try {
-        const response = await fetch(`${this.apiBase}/api/auth/login`, {
+        const response = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
           method: 'POST',
+          credentials: 'include',            // envia la cookie HttpOnly del refresh
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: this.savedEmail, password: this.savedPassword })
         });
+        if (!response.ok) return false;
         const resData = await response.json();
-        if (!response.ok || resData.status === 'error') return false;
+        if (resData.status === 'error') return false;
         const dataObj = resData.data || {};
         const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
         if (!token || this.isJwtExpired(token)) return false;
 
-        const refresh = dataObj.refreshToken || resData.refreshToken;
-        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
-
-        // Actualización mínima del token (sin loadConversationsList ni reset).
-        this.jwt = token;
-        localStorage.setItem('swingtails_jwt', token);
-        const user = this.mapUserFromToken(token);
-        if (user) { this.currentUser = user; this.currentUserId = user.id; }
-        this.isLoggedIn = true;
+        if (fullSetup) {
+          // Primer arranque: sesion completa (decodifica usuario, carga chats).
+          this.setLoginSession(token);
+        } else {
+          // Renovacion en caliente: solo el token en memoria.
+          this.jwt = token;
+          const user = this.mapUserFromToken(token);
+          if (user && user.id) { this.currentUser = user; this.currentUserId = user.id; }
+          this.isLoggedIn = true;
+        }
         return true;
       } catch (e) {
         console.error('Silent re-auth falló:', e);

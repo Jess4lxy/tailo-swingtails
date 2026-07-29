@@ -27,13 +27,20 @@ from typing import Any
 
 import requests
 
+import jwt as pyjwt  # PyJWT: verificacion de firma (reporte de seguridad C-01)
+
 from config import (
     API_BASE,
     API_EMAIL,
     API_JWT,
     API_PASSWORD,
     API_TIMEOUT,
+    JWT_ALGORITHMS,
+    JWT_SECRET,
 )
+
+# Aviso unico si se corre SIN el secreto (verificacion de firma degradada).
+_warned_no_secret = False
 
 
 def _decode_jwt_user_id(token: str) -> int | None:
@@ -58,6 +65,73 @@ def _decode_jwt_user_id(token: str) -> int | None:
         return int(uid) if uid is not None else None
     except (TypeError, ValueError):
         return None
+
+
+class InvalidToken(Exception):
+    """El JWT es invalido (firma, alg:none, formato o expiracion)."""
+
+
+def verify_token(token: str) -> int:
+    """Verifica el JWT y devuelve el user_id. Lanza InvalidToken si NO es valido.
+
+    Reporte de seguridad C-01 (alg:none bypass). Defensa en dos niveles:
+
+      1) SIEMPRE (con o sin secreto): rechaza tokens mal formados, con algoritmo
+         'none' o SIN firma (header.payload. sin tercera parte). Esto MATA el
+         exploit demostrado (forjar tokens con alg:none).
+      2) Si hay secreto compartido (SWINGTAILS_JWT_SECRET): verifica la FIRMA y
+         la expiracion criptograficamente con PyJWT. Un token con firma invalida
+         se rechaza. (Sin el secreto no se puede validar la firma; se acepta el
+         payload como mitigacion parcial y se avisa una vez.)
+    """
+    global _warned_no_secret
+    if not token or token.count(".") != 2:
+        raise InvalidToken("token mal formado")
+    header_b64, payload_b64, signature = token.split(".")
+
+    # --- Nivel 1: bloqueo duro de alg:none / sin firma (siempre) -------------
+    try:
+        header_b64p = header_b64 + "=" * (-len(header_b64) % 4)
+        header = json.loads(base64.urlsafe_b64decode(header_b64p))
+    except (ValueError, json.JSONDecodeError):
+        raise InvalidToken("header ilegible")
+    alg = str(header.get("alg", "")).strip()
+    if alg.lower() == "none" or not signature:
+        raise InvalidToken("algoritmo 'none' o token sin firma (rechazado)")
+    if JWT_ALGORITHMS and alg not in JWT_ALGORITHMS:
+        raise InvalidToken(f"algoritmo no permitido: {alg}")
+
+    # --- Nivel 2: verificacion criptografica de firma + exp (con secreto) ----
+    if JWT_SECRET:
+        try:
+            payload = pyjwt.decode(
+                token, JWT_SECRET, algorithms=JWT_ALGORITHMS,
+                options={"require": ["exp"], "verify_signature": True},
+            )
+        except pyjwt.PyJWTError as exc:
+            raise InvalidToken(f"firma/expiracion invalida: {exc}") from exc
+    else:
+        # Sin secreto: no se puede validar la firma (mitigacion parcial). Ya
+        # rechazamos alg:none arriba. Leemos el payload y validamos la expiracion.
+        if not _warned_no_secret:
+            print("[seguridad] SWINGTAILS_JWT_SECRET no configurado: se bloquea "
+                  "alg:none pero NO se verifica la firma. Pide el secreto a la "
+                  "Auth API para verificacion completa (C-01).")
+            _warned_no_secret = True
+        try:
+            payload_b64p = payload_b64 + "=" * (-len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64p))
+        except (ValueError, json.JSONDecodeError):
+            raise InvalidToken("payload ilegible")
+        if token_is_expired(token):
+            raise InvalidToken("token expirado")
+
+    uid = payload.get("id") or payload.get("userId") or payload.get("user_id")
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        raise InvalidToken("token sin id de usuario valido")
+    return uid
 
 
 def token_is_expired(token: str, skew: int = 30) -> bool:

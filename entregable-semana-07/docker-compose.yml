@@ -47,6 +47,15 @@ services:
       # 'tailo-data', asi el sembrado sobrevive a reinicios. Se siembra con:
       #   docker compose exec backend python seed_stress.py --target 50000 --reset
       TAILO_STRESS_DB: "/app/data/stress.db"
+      # --- Endurecimiento (2da auditoria) ---
+      # Swagger/OpenAPI DESHABILITADOS en produccion (C-04). Pon "1" solo local.
+      TAILO_ENABLE_DOCS: "0"
+      # Admins que ven /observability/* (C-03). VACIO = nadie (403). Para usar el
+      # panel de auditoria en la demo, pon aqui el id de tu usuario, p.ej. "29".
+      TAILO_ADMIN_USER_IDS: ""
+      # Secreto para VERIFICAR la firma del JWT (C-01). Pidelo al equipo de la
+      # Auth API y ponlo en el .env como SWINGTAILS_JWT_SECRET. Sin el, se bloquea
+      # alg:none pero no se valida la firma criptograficamente.
       # Cache de modelos de Whisper (y del reranker bge, si se instala).
       HF_HOME: "/models"
     # En Docker Desktop (Windows/Mac) 'host.docker.internal' YA resuelve al host

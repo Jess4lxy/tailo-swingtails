@@ -115,6 +115,15 @@ _RAW_PATTERNS: list[tuple[str, str]] = [
     ("code_leak", r"\b(show|give|send|print|reveal|leak|dump|paste)\b.{0,25}\b(your )?(source code|code|env( file)?|\.env|api keys?|secret keys?|credentials|tokens?|database (schema|structure)|system files?)\b"),
     ("authority", r"\bi('m| am)\b.{0,15}\b(the |an |your )?(admin(istrator)?|developer|superuser|root|owner|creator|engineer|sysadmin)\b.{0,35}\b(system|server|database|backend|code|prompt|access|grant|give me|reveal|show)\b"),
     ("authority", r"\bgrant\b.{0,15}\b(me )?\b(admin|root|superuser|elevated|full)\s*(access|privileges?|permissions?|rights?)\b"),
+
+    # --- Payloads de inyeccion tecnica (reporte M-03): SQLi / comandos / XSS --
+    # Un usuario de mascotas jamas escribe esto; casi no hay falsos positivos.
+    ("sqli", r"\bunion\s+select\b|\bselect\b.{0,40}\bfrom\b.{0,40}\bwhere\b"),
+    ("sqli", r"\b(drop|truncate)\s+table\b|\bdelete\s+from\b|\binsert\s+into\b|\bupdate\b.{0,30}\bset\b.{0,30}="),
+    ("sqli", r"'\s*or\s*'?1'?\s*=\s*'?1|\bor\s+1\s*=\s*1\b|'\s*or\s+1=1|\"\s*or\s+1=1"),
+    ("sqli", r"';?\s*--|\bxp_cmdshell\b|\bsleep\s*\(|\bpg_sleep\s*\(|\bwaitfor\s+delay\b"),
+    ("cmdi", r"[;&|]\s*(rm|cat|ls|wget|curl|nc|bash|sh|powershell|cmd|whoami|id|cat)\s|\$\([^)]+\)|`[^`]+`|\|\|\s*(rm|curl|wget)"),
+    ("xss_payload", r"<\s*script\b|javascript\s*:|on(error|load|click|mouseover)\s*=|<\s*img[^>]*onerror|<\s*iframe\b|document\.cookie|<\s*svg[^>]*onload"),
 ]
 
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [

@@ -48,7 +48,9 @@ import observability
 import sessions
 from agents.orchestrator import Orchestrator
 from config import (
+    ADMIN_USER_IDS,
     CORS_ORIGINS,
+    ENABLE_DOCS,
     LLM_MODEL,
     OLLAMA_HOST,
     OLLAMA_TIMEOUT,
@@ -57,6 +59,7 @@ from config import (
     RATE_LIMIT_TRANSCRIBE,
     RATE_LIMIT_WINDOW,
     TOP_K,
+    TRANSCRIBE_MAX_BYTES,
     WEB_DIST,
     WHISPER_COMPUTE,
     WHISPER_DEVICE,
@@ -65,7 +68,15 @@ from config import (
 )
 from retrieve import Retriever
 
-app = FastAPI(title="Tailo Agent", version="0.7")
+# Documentacion interactiva DESHABILITADA en produccion (reporte C-04): no se
+# exponen /docs, /redoc ni /openapi.json salvo que TAILO_ENABLE_DOCS=1.
+app = FastAPI(
+    title="Tailo Agent",
+    version="0.7",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -231,15 +242,30 @@ def _bearer_token(authorization: str | None) -> str:
 
 
 def _validate_token(authorization: str | None) -> tuple[api_client.SwingTailsClient, int]:
-    """Valida el JWT y devuelve (cliente ligado al token, user_id). NO toca el
-    ContextVar: el caller decide cuando/donde activarlo (en el hilo correcto)."""
+    """Valida el JWT (FIRMA + alg + exp) y devuelve (cliente ligado al token,
+    user_id). NO toca el ContextVar: el caller decide cuando/donde activarlo.
+
+    Reporte de seguridad C-01: usa api_client.verify_token, que RECHAZA tokens
+    con alg:none / sin firma y (si hay secreto) verifica la firma. Antes solo se
+    leia el payload, lo que permitia forjar tokens de cualquier usuario."""
     token = _bearer_token(authorization)
-    if api_client.token_is_expired(token):
-        raise HTTPException(status_code=401, detail="Token expirado; inicia sesion de nuevo")
+    try:
+        user_id = api_client.verify_token(token)
+    except api_client.InvalidToken as exc:
+        raise HTTPException(status_code=401, detail=f"Token invalido: {exc}")
     client = api_client.client_from_token(token)
-    if client.current_user_id is None:
-        raise HTTPException(status_code=401, detail="Token invalido o sin id de usuario")
-    return client, client.current_user_id
+    return client, user_id
+
+
+def _require_admin(user_id: int) -> None:
+    """Reporte C-03: la bitacora de observabilidad expone datos de TODOS los
+    usuarios, asi que solo la ven administradores (TAILO_ADMIN_USER_IDS). Si la
+    lista esta vacia, NADIE accede (403) -> equivale a deshabilitar el endpoint."""
+    if user_id not in ADMIN_USER_IDS:
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso restringido: la bitacora de auditoria es solo para administradores.",
+        )
 
 
 def _authed_user_id(authorization: str | None) -> tuple[int, object]:
@@ -462,7 +488,21 @@ async def transcribe(
     if not data:
         raise HTTPException(status_code=400, detail="Audio vacio")
 
-    suffix = Path(audio.filename or "audio.webm").suffix or ".webm"
+    # (Reporte C-05) Validacion de la subida ANTES de procesar: tamaño y tipo.
+    # Antes, un archivo que no era audio hacia crashear a Whisper -> HTTP 500.
+    if len(data) > TRANSCRIBE_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"El audio supera el limite ({TRANSCRIBE_MAX_BYTES // 1_000_000} MB).",
+        )
+    _ALLOWED_AUDIO_SUFFIX = {".webm", ".wav", ".mp3", ".m4a", ".ogg", ".oga", ".flac", ".mp4", ".mpga", ".aac"}
+    suffix = (Path(audio.filename or "audio.webm").suffix or ".webm").lower()
+    ctype = (audio.content_type or "").lower()
+    if suffix not in _ALLOWED_AUDIO_SUFFIX and not ctype.startswith("audio/"):
+        raise HTTPException(
+            status_code=415,
+            detail="Formato no soportado. Envia un archivo de audio (webm/wav/mp3/m4a/ogg).",
+        )
     t0 = time.perf_counter()
 
     def _do_transcription() -> tuple[str, str | None]:
@@ -477,6 +517,14 @@ async def transcribe(
             text = "".join(seg.text for seg in segments).strip()
             lang = getattr(info, "language", None)
             return text, lang
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001 - contenido no-audio / corrupto
+            # (C-05) NO propagamos como 500: el archivo no es audio decodificable.
+            raise HTTPException(
+                status_code=400,
+                detail="No se pudo procesar el audio; el archivo no es un audio valido.",
+            ) from exc
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -569,8 +617,9 @@ def observability_logs(
     """Devuelve los registros de auditoria, mas reciente primero.
 
     - `?session_id=<conversation_id>` filtra por una conversacion.
-    - `?limit=<n>` acota la cantidad (1..500). Requiere JWT valido."""
-    _validate_token(authorization)
+    - `?limit=<n>` acota la cantidad (1..500). Requiere JWT valido de ADMIN."""
+    _client, uid = _validate_token(authorization)
+    _require_admin(uid)
     limit = max(1, min(int(limit), 500))
     rows = observability.recent_logs(limit=limit, session_id=session_id)
     return [_obs_row(r) for r in rows]
@@ -578,8 +627,10 @@ def observability_logs(
 
 @app.get("/observability/stats")
 def observability_stats(authorization: str | None = Header(default=None)) -> dict:
-    """Agregados para el informe: total, % bloqueados, TTFT/latencia/tps medios."""
-    _validate_token(authorization)
+    """Agregados para el informe: total, % bloqueados, TTFT/latencia/tps medios.
+    Solo administradores (reporte C-03)."""
+    _client, uid = _validate_token(authorization)
+    _require_admin(uid)
     s = observability.stats()
     total = s.get("total") or 0
     blocked = s.get("blocked") or 0
