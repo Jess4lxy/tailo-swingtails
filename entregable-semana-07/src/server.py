@@ -288,10 +288,13 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
 
     Debe correr dentro de un contexto con el cliente HTTP del usuario activado
     (ContextVar) para que las tools transaccionales operen en su nombre."""
-    # --- A. Resolucion del conversation_id ----------------------------------
+    # --- A. Resolucion del conversation_id (creacion DIFERIDA) --------------
+    # NO creamos la conversacion aqui: si lo hicieramos, un mensaje BLOQUEADO por
+    # el guardrail (o un fallo) dejaria una "Nueva conversacion" vacia basura en
+    # la lista. La conversacion se crea SOLO cuando de verdad vamos a guardar un
+    # turno (mas abajo, si no fue bloqueado).
     conv_id = req.conversation_id
-    if req.new_session or not conv_id or not sessions.conversation_exists(conv_id, user_id):
-        conv_id = sessions.create_conversation(user_id=user_id)
+    is_new = req.new_session or not conv_id or not sessions.conversation_exists(conv_id, user_id)
 
     # Ubicacion del usuario para este turno (si la compartio): la activamos en el
     # ContextVar por-hilo para que la tool find_nearest_clinics la lea, igual que
@@ -303,7 +306,8 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
     try:
         # --- C. Prompting: historial persistido (resumen + turnos recientes) -
         # El orquestador lo pasa TAL CUAL al especialista (contexto entre agentes).
-        context = sessions.build_context(conv_id)
+        # Una conversacion nueva aun no existe en la BD: su contexto es vacio.
+        context = [] if is_new else sessions.build_context(conv_id)
 
         done_ev: dict | None = None
         for ev in _orchestrator().run_turn(context, req.message):
@@ -326,6 +330,10 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
     compacted = False
     turns = 0
     if not blocked:
+        # Aqui SI creamos la conversacion (recien ahora sabemos que hay un turno
+        # real que guardar). Un mensaje bloqueado nunca llega aca -> no ensucia.
+        if is_new:
+            conv_id = sessions.create_conversation(user_id=user_id)
         sessions.append_turn(conv_id, req.message, reply)
         comp = sessions.compact(conv_id, client=_ollama(), model=LLM_MODEL)
         compacted = comp["compacted"]
@@ -343,7 +351,7 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
         tools_executed=done_ev.get("tools_executed", []),
     )
 
-    done_ev.update(conversation_id=conv_id, user_id=user_id, turns=turns, compacted=compacted)
+    done_ev.update(conversation_id=conv_id or "", user_id=user_id, turns=turns, compacted=compacted)
     yield done_ev
 
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 import ipaddress
 import re
 import socket
+import threading
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -137,26 +138,43 @@ class _TextExtractor(HTMLParser):
 
 
 # ---------------------------------------------------------------------------
-# Anti-SSRF: valida que el host no sea una direccion interna.
+# Anti-SSRF: valida que el host no resuelva a una direccion interna, y FIJA
+# (pin) la IP validada durante la peticion para cerrar el hueco de DNS-rebinding
+# (el DNS podria cambiar entre nuestra validacion y la resolucion de requests).
 # ---------------------------------------------------------------------------
-def _host_is_safe(host: str) -> bool:
-    """False si el host resuelve a una IP privada/loopback/reservada."""
+# Las lecturas web son poco frecuentes (solo cuando el usuario comparte un
+# enlace), asi que serializarlas con un lock para fijar el DNS de forma segura
+# entre hilos es un costo aceptable.
+_dns_lock = threading.Lock()
+_orig_getaddrinfo = socket.getaddrinfo  # resolver real (para restaurar tras el pin)
+
+
+def _ip_is_internal(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True  # ilegible -> tratar como no permitida
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local
+        or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+    )
+
+
+def _safe_ips(host: str) -> list[str] | None:
+    """IPs publicas a las que resuelve host, o None si CUALQUIERA es interna."""
     try:
         infos = socket.getaddrinfo(host, None)
     except (socket.gaierror, UnicodeError, OSError):
-        return False
-    for info in infos:
-        ip_str = info[4][0]
-        try:
-            ip = ipaddress.ip_address(ip_str)
-        except ValueError:
-            return False
-        if (
-            ip.is_private or ip.is_loopback or ip.is_link_local
-            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
-        ):
-            return False
-    return True
+        return None
+    ips = [info[4][0] for info in infos]
+    if not ips or any(_ip_is_internal(ip) for ip in ips):
+        return None
+    return ips
+
+
+def _host_is_safe(host: str) -> bool:
+    """False si el host resuelve a una IP privada/loopback/reservada."""
+    return _safe_ips(host) is not None
 
 
 def _fetch_one(url: str) -> dict:
@@ -164,16 +182,35 @@ def _fetch_one(url: str) -> dict:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return {"url": url, "ok": False, "error": "esquema no soportado (solo http/https)"}
-    if not _host_is_safe(parsed.hostname):
-        return {"url": url, "ok": False, "error": "el enlace apunta a una direccion no permitida"}
 
-    try:
-        resp = requests.get(
-            url, headers=_HEADERS, timeout=WEB_READ_TIMEOUT,
-            stream=True, allow_redirects=True,
-        )
-    except requests.RequestException as exc:
-        return {"url": url, "ok": False, "error": f"no se pudo abrir ({exc.__class__.__name__})"}
+    # Resolvemos y validamos AHORA, y FIJAMOS esa IP durante la conexion para que
+    # requests no vuelva a resolver el DNS (evita DNS-rebinding a una IP interna).
+    safe = _safe_ips(parsed.hostname)
+    if not safe:
+        return {"url": url, "ok": False, "error": "el enlace apunta a una direccion no permitida"}
+    pinned_ip = safe[0]
+    target_host = parsed.hostname
+
+    def _pinned_getaddrinfo(host, port, *a, **k):
+        # Solo fijamos el host objetivo; cualquier otro (p.ej. destino de una
+        # redireccion) resuelve normal y se revalida despues (final_host).
+        if host == target_host:
+            fam = socket.AF_INET6 if ":" in pinned_ip else socket.AF_INET
+            return [(fam, socket.SOCK_STREAM, 6, "", (pinned_ip, port or 0))]
+        return _orig_getaddrinfo(host, port, *a, **k)
+
+    with _dns_lock:
+        socket.getaddrinfo = _pinned_getaddrinfo
+        try:
+            resp = requests.get(
+                url, headers=_HEADERS, timeout=WEB_READ_TIMEOUT,
+                stream=True, allow_redirects=True,
+            )
+        except requests.RequestException as exc:
+            return {"url": url, "ok": False, "error": f"no se pudo abrir ({exc.__class__.__name__})"}
+        finally:
+            # La conexion ya esta establecida; restauramos el resolver global.
+            socket.getaddrinfo = _orig_getaddrinfo
 
     with resp:
         if resp.status_code >= 400:
