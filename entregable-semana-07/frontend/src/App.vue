@@ -797,12 +797,12 @@ export default {
       // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
       // Asi el formulario no aparece en rojo desde el primer segundo.
       touched: { name: false, email: false, phone: false, password: false, password2: false },
-      // (H-03) El Access Token vive SOLO en memoria (estado de Vue), NUNCA en
-      // localStorage: asi un XSS no puede robar la sesion persistente. El Refresh
-      // Token lo guarda la Auth API en una cookie HttpOnly (invisible a JS) y con
-      // ella renovamos el Access Token al cargar la pagina (silentReauth).
-      // Por eso YA NO guardamos email/password en memoria: el refresh usa la
-      // cookie, no las credenciales.
+      // Credenciales guardadas SOLO EN MEMORIA (nunca en localStorage) para el
+      // re-login silencioso cuando el access token vence (~30 min) mientras la
+      // pestaña sigue abierta. Se pierden al recargar la pagina (a proposito:
+      // no dejamos la contraseña en disco). Se limpian al cerrar sesion.
+      savedEmail: '',
+      savedPassword: '',
       jwt: '',
       manualJwt: '',
       currentUserId: null,
@@ -924,13 +924,23 @@ export default {
     }
   },
   async mounted() {
-    // (H-03) Auto-login SIN localStorage: al cargar la pagina intentamos renovar
-    // el Access Token usando el Refresh Token que la Auth API guardo en una
-    // cookie HttpOnly. Si funciona, entramos directo; si no (sin cookie valida),
-    // se muestra la pantalla de login. Asi la sesion persiste tras F5 sin dejar
-    // el token en disco.
-    await this.silentReauth(true);
-
+    // Auto-reautenticación silenciosa al montar la app usando cookie (H-03)
+    try {
+      const res = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include' // Para enviar la cookie HttpOnly al API Gateway
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && data.data && data.data.accessToken) {
+          this.decodeAndValidateManualJwt(data.data.accessToken);
+        }
+      }
+    } catch (e) {
+      // Ignoramos errores de red o sesión ausente
+    }
+    
     // Auto focus text input on start
     this.$nextTick(() => {
       this.focusInput();
@@ -1106,6 +1116,7 @@ export default {
           headers: {
             'Content-Type': 'application/json'
           },
+          credentials: 'include',
           body: JSON.stringify({
             email: this.email,
             password: this.password
@@ -1127,8 +1138,13 @@ export default {
           throw new Error('No se devolvió un token de acceso desde el servidor');
         }
 
-        // (H-03) El Refresh Token viaja en la cookie HttpOnly (NO se toca desde
-        // JS). El Access Token se guarda SOLO en memoria (setLoginSession).
+        // El refreshToken ahora es una cookie HttpOnly gestionada por el backend.
+        // No almacenamos persistencia en localStorage por seguridad (H-03).
+
+        // Snapshot en memoria para el re-login silencioso (no toca localStorage).
+        this.savedEmail = this.email;
+        this.savedPassword = this.password;
+
         this.setLoginSession(token);
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
@@ -1254,16 +1270,13 @@ export default {
     setLoginSession(token) {
       // (H-03) Access Token SOLO en memoria; nunca en localStorage.
       this.jwt = token;
-
+      
       const user = this.mapUserFromToken(token);
       if (user && user.id) {
         this.currentUser = user;
         this.currentUserId = user.id;
       } else {
-        // (M-02) Antes se ponia currentUserId = 99 (un id falso que podia
-        // colisionar con un usuario real). Si el token no trae id valido, el
-        // token esta roto -> no iniciamos sesion, forzamos reautenticacion.
-        this.forceReauth('No se pudo validar tu sesión. Inicia sesión de nuevo.');
+        this.handleLogout();
         return;
       }
 
@@ -1301,7 +1314,7 @@ export default {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ refreshToken: refreshToken || '' })
+            credentials: 'include'
           });
         } catch (err) {
           console.error('Error al notificar el cierre de sesión a la API:', err);
@@ -1320,7 +1333,6 @@ export default {
       this.savedEmail = '';
       this.savedPassword = '';
       this.password = '';
-      // Ya no guardamos el token en localStorage; solo limpiamos el resto.
       localStorage.removeItem('swingtails_active_conv');
     },
 
