@@ -134,6 +134,17 @@
             </p>
           </div>
 
+          <!-- Google reCAPTCHA Widget (Hallazgo C-04) -->
+          <div class="form-group" style="margin-bottom: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 78px;">
+            <div id="recaptcha-widget"></div>
+            <p v-if="!captchaToken" style="font-size: 0.75rem; color: #8c8c8c; margin-top: 6px;">
+              🔒 Completa la casilla de reCAPTCHA para habilitar el registro
+            </p>
+            <p v-else style="font-size: 0.8rem; color: #27ae60; margin-top: 6px; font-weight: 600;">
+              ✓ Verificación de reCAPTCHA completada
+            </p>
+          </div>
+
           <div v-if="registerError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
             {{ registerError }}
           </div>
@@ -243,8 +254,26 @@
             <a href="#" @click.prevent="switchAuthMode('forgot')" style="color: var(--text-muted); font-size: 0.90rem;">¿Olvidaste tu contraseña?</a>
           </div>
 
+          <div v-if="loginSuccess" style="background: #f0fdf4; border: 1px solid #c3e6cb; color: #27ae60; font-size: 0.85rem; padding: 12px; border-radius: 8px; margin-bottom: 16px; text-align: center; line-height: 1.4;">
+            {{ loginSuccess }}
+          </div>
+
           <div v-if="loginError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
             {{ loginError }}
+            <div v-if="showResendBtn" style="margin-top: 10px;">
+              <button 
+                type="button" 
+                @click="handleResendVerification()" 
+                :disabled="resendLoading"
+                style="background: transparent; border: 1px solid #6a3f36; color: #6a3f36; padding: 6px 14px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer;"
+              >
+                {{ resendLoading ? 'Enviando...' : 'Reenviar correo de activación' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="resendMessage" style="color: #27ae60; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
+            {{ resendMessage }}
           </div>
 
           <button type="submit" class="btn-primary" :disabled="loginLoading">
@@ -740,6 +769,12 @@ export default {
       email: '',
       password: '',
       showLoginPassword: false,
+      loginLoading: false,
+      loginError: '',
+      loginSuccess: '',
+      showResendBtn: false,
+      resendLoading: false,
+      resendMessage: '',
 
       // Formulario de recuperación de contraseña (POST /api/auth/forgot-password)
       forgotEmail: '',
@@ -758,6 +793,7 @@ export default {
       showRegPassword2: false,
       registerLoading: false,
       registerError: '',
+      captchaToken: '',
       // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
       // Asi el formulario no aparece en rojo desde el primer segundo.
       touched: { name: false, email: false, phone: false, password: false, password2: false },
@@ -863,7 +899,7 @@ export default {
     },
     registerFormValid() {
       return this.nameValid && this.emailValid && this.phoneValid
-        && this.passwordValid && this.passwordsMatch;
+        && this.passwordValid && this.passwordsMatch && Boolean(this.captchaToken);
     },
 
     userNameLetter() {
@@ -899,6 +935,7 @@ export default {
     this.$nextTick(() => {
       this.focusInput();
     });
+    this.initRecaptcha();
   },
   methods: {
     focusInput() {
@@ -911,6 +948,9 @@ export default {
     switchAuthMode(mode) {
       this.authMode = mode;
       this.loginError = '';
+      this.loginSuccess = '';
+      this.showResendBtn = false;
+      this.resendMessage = '';
       this.registerError = '';
       this.forgotError = '';
       this.forgotSuccess = '';
@@ -920,6 +960,9 @@ export default {
       this.showRegPassword2 = false;
       if (mode === 'forgot' && this.email) {
         this.forgotEmail = this.email;
+      }
+      if (mode === 'register') {
+        this.renderRecaptcha();
       }
       // Reinicia los "tocados": al volver al registro no debe aparecer en rojo.
       Object.keys(this.touched).forEach(k => { this.touched[k] = false; });
@@ -982,6 +1025,11 @@ export default {
         return;
       }
 
+      if (!this.captchaToken) {
+        this.registerError = 'Por favor completa la casilla de verificación reCAPTCHA para continuar.';
+        return;
+      }
+
       this.registerLoading = true;
       try {
         const body = {
@@ -991,7 +1039,8 @@ export default {
           // Nota: la sanitizacion real debe hacerla tambien el backend (Auth API).
           name: this.regName.trim().replace(/[^\p{L}\p{N}\s.\-]/gu, '').slice(0, 80),
           email: this.regEmail.trim(),
-          password: this.regPassword
+          password: this.regPassword,
+          captcha_token: this.captchaToken
         };
         if (this.regPhone.trim()) body.phone_number = this.regPhone.trim();
 
@@ -1046,6 +1095,8 @@ export default {
     async handleLogin() {
       this.loginLoading = true;
       this.loginError = '';
+      this.showResendBtn = false;
+      this.resendMessage = '';
       try {
         const response = await fetch(`${this.apiBase}/api/auth/login`, {
           method: 'POST',
@@ -1063,7 +1114,11 @@ export default {
 
         const resData = await response.json();
         if (!response.ok || resData.status === 'error') {
-          throw new Error(resData.message || 'Error de credenciales en SwingTails');
+          const msg = resData.message || 'Error de credenciales en SwingTails';
+          if (response.status === 403 || /confirmar|verificar|bandeja/i.test(msg)) {
+            this.showResendBtn = true;
+          }
+          throw new Error(msg);
         }
 
         const dataObj = resData.data || {};
@@ -1084,6 +1139,72 @@ export default {
       } finally {
         this.loginLoading = false;
       }
+    },
+
+    async handleResendVerification(emailToResend) {
+      const emailTarget = emailToResend || this.email;
+      if (!emailTarget) return;
+      this.resendLoading = true;
+      this.resendMessage = '';
+      try {
+        const response = await fetch(`${this.apiBase}/api/auth/resend-verification`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailTarget })
+        });
+        const resData = await response.json();
+        this.resendMessage = resData.message || 'Se ha enviado un nuevo enlace de activación a tu correo electrónico.';
+      } catch (err) {
+        this.resendMessage = 'Error al solicitar el reenvío de correo.';
+      } finally {
+        this.resendLoading = false;
+      }
+    },
+
+    initRecaptcha() {
+      if (document.getElementById('recaptcha-script')) {
+        this.renderRecaptcha();
+        return;
+      }
+      window.onloadRecaptchaCallback = () => {
+        this.renderRecaptcha();
+      };
+      const script = document.createElement('script');
+      script.id = 'recaptcha-script';
+      script.src = 'https://www.google.com/recaptcha/api.js?onload=onloadRecaptchaCallback&render=explicit';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    },
+    renderRecaptcha() {
+      this.$nextTick(() => {
+        const container = document.getElementById('recaptcha-widget');
+        if (window.grecaptcha && container) {
+          try {
+            container.innerHTML = '';
+            const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
+            if (!siteKey) {
+              console.warn('VITE_RECAPTCHA_SITE_KEY no configurada');
+              return;
+            }
+            window.grecaptcha.render('recaptcha-widget', {
+              sitekey: siteKey,
+              callback: (token) => {
+                this.captchaToken = token;
+                this.registerError = '';
+              },
+              'expired-callback': () => {
+                this.captchaToken = '';
+              },
+              'error-callback': () => {
+                this.captchaToken = '';
+              }
+            });
+          } catch (e) {
+            console.warn('reCAPTCHA notice:', e);
+          }
+        }
+      });
     },
 
     mapUserFromToken(token) {
@@ -1157,7 +1278,7 @@ export default {
         this.focusInput();
       });
     },
-    handleLogout() {
+    async handleLogout() {
       // (H-03) Pide a la Auth API que INVALIDE la cookie HttpOnly del Refresh
       // Token (Set-Cookie de borrado). credentials:'include' envia la cookie.
       // Es fire-and-forget: no bloqueamos el cierre de sesion si la red falla.
@@ -1169,6 +1290,24 @@ export default {
         }).catch(() => {});
       } catch (e) { /* ignore */ }
 
+      const token = this.jwt || localStorage.getItem('swingtails_jwt');
+      const refreshToken = localStorage.getItem('swingtails_refresh');
+
+      if (token) {
+        try {
+          await fetch(`${this.apiBase}/api/auth/logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ refreshToken: refreshToken || '' })
+          });
+        } catch (err) {
+          console.error('Error al notificar el cierre de sesión a la API:', err);
+        }
+      }
+
       this.isLoggedIn = false;
       this.jwt = '';
       this.currentUser = null;
@@ -1176,6 +1315,10 @@ export default {
       this.messages = [];
       this.conversations = [];
       this.activeConversationId = null;
+      // Olvidar credenciales en memoria: sin esto el re-login silencioso
+      // reautenticaria justo despues de cerrar sesion.
+      this.savedEmail = '';
+      this.savedPassword = '';
       this.password = '';
       // Ya no guardamos el token en localStorage; solo limpiamos el resto.
       localStorage.removeItem('swingtails_active_conv');
