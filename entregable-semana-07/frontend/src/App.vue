@@ -923,15 +923,22 @@ export default {
   async mounted() {
     // Auto-reautenticación silenciosa al montar la app usando cookie (H-03)
     try {
+      const localRefresh = localStorage.getItem('swingtails_refresh');
       const res = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include' // Para enviar la cookie HttpOnly al API Gateway
+        credentials: 'include', // Para enviar la cookie HttpOnly al API Gateway
+        body: JSON.stringify(localRefresh ? { refreshToken: localRefresh } : {})
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.status === 'success' && data.data && data.data.accessToken) {
-          this.decodeAndValidateManualJwt(data.data.accessToken);
+        if (data.status === 'success') {
+          // Fallback: guardar token en localStorage si el navegador bloquea cookies de terceros
+          if (data.data && data.data.refreshToken) {
+            localStorage.setItem('swingtails_refresh', data.data.refreshToken);
+          }
+          const token = data.data.accessToken;
+          this.decodeAndValidateManualJwt(token);
         }
       }
     } catch (e) {
@@ -1332,16 +1339,19 @@ export default {
     // sin recargar la vista para no interrumpir un mensaje en curso.
     async silentReauth(fullSetup = false) {
       try {
+        const localRefresh = localStorage.getItem('swingtails_refresh');
         const response = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
           method: 'POST',
           credentials: 'include',            // envia la cookie HttpOnly del refresh
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(localRefresh ? { refreshToken: localRefresh } : {})
         });
         if (!response.ok) return false;
         const resData = await response.json();
         if (resData.status === 'error') return false;
         const dataObj = resData.data || {};
         const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
+        if (dataObj.refreshToken) localStorage.setItem('swingtails_refresh', dataObj.refreshToken);
         if (!token || this.isJwtExpired(token)) return false;
 
         if (fullSetup) {
