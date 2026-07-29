@@ -803,7 +803,7 @@ export default {
       // no dejamos la contraseña en disco). Se limpian al cerrar sesion.
       savedEmail: '',
       savedPassword: '',
-      jwt: localStorage.getItem('swingtails_jwt') || '',
+      jwt: '',
       manualJwt: '',
       currentUserId: null,
       currentUser: null,
@@ -923,17 +923,23 @@ export default {
       }
     }
   },
-  mounted() {
-    // Re-verify login if JWT is present
-    if (this.jwt) {
-      if (this.isJwtExpired(this.jwt)) {
-        this.forceReauth('Tu sesión expiró. Inicia sesión de nuevo para continuar.');
-      } else {
-        this.decodeAndValidateManualJwt(this.jwt);
+  async mounted() {
+    // Auto-reautenticación silenciosa al montar la app usando cookie (H-03)
+    try {
+      const res = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include' // Para enviar la cookie HttpOnly al API Gateway
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && data.data && data.data.accessToken) {
+          this.decodeAndValidateManualJwt(data.data.accessToken);
+        }
       }
+    } catch (e) {
+      // Ignoramos errores de red o sesión ausente
     }
-    
-
     
     // Auto focus text input on start
     this.$nextTick(() => {
@@ -1095,6 +1101,7 @@ export default {
           headers: {
             'Content-Type': 'application/json'
           },
+          credentials: 'include',
           body: JSON.stringify({
             email: this.email,
             password: this.password
@@ -1116,12 +1123,8 @@ export default {
           throw new Error('No se devolvió un token de acceso desde el servidor');
         }
 
-        // Guardamos también el refreshToken. Hoy la API de SwingTails NO tiene
-        // un refresh funcional (POST /api/auth/refresh-token responde
-        // "Token mismatch"), pero lo persistimos para poder canjearlo cuando el
-        // equipo de la API corrija ese endpoint, sin volver a tocar el front.
-        const refresh = dataObj.refreshToken || resData.refreshToken;
-        if (refresh) localStorage.setItem('swingtails_refresh', refresh);
+        // El refreshToken ahora es una cookie HttpOnly gestionada por el backend.
+        // No almacenamos persistencia en localStorage por seguridad (H-03).
 
         // Snapshot en memoria para el re-login silencioso (no toca localStorage).
         this.savedEmail = this.email;
@@ -1247,20 +1250,18 @@ export default {
         this.loginError = 'Formato de JWT inválido o no contiene información de usuario';
         this.isLoggedIn = false;
         this.jwt = '';
-        localStorage.removeItem('swingtails_jwt');
       }
     },
     setLoginSession(token) {
       this.jwt = token;
-      localStorage.setItem('swingtails_jwt', token);
       
       const user = this.mapUserFromToken(token);
       if (user) {
         this.currentUser = user;
         this.currentUserId = user.id;
       } else {
-        this.currentUser = null;
-        this.currentUserId = 99;
+        this.handleLogout();
+        return;
       }
 
       this.isLoggedIn = true;
@@ -1275,8 +1276,7 @@ export default {
       });
     },
     async handleLogout() {
-      const token = this.jwt || localStorage.getItem('swingtails_jwt');
-      const refreshToken = localStorage.getItem('swingtails_refresh');
+      const token = this.jwt;
 
       if (token) {
         try {
@@ -1286,7 +1286,7 @@ export default {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ refreshToken: refreshToken || '' })
+            credentials: 'include'
           });
         } catch (err) {
           console.error('Error al notificar el cierre de sesión a la API:', err);
@@ -1305,8 +1305,6 @@ export default {
       this.savedEmail = '';
       this.savedPassword = '';
       this.password = '';
-      localStorage.removeItem('swingtails_jwt');
-      localStorage.removeItem('swingtails_refresh');
       localStorage.removeItem('swingtails_active_conv');
     },
 
