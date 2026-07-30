@@ -95,13 +95,19 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # NGROK - tunel inverso que expone el BACKEND (API) a Internet con tu DOMINIO
-  # ESTATICO (URL fija). Arquitectura HIBRIDA: el frontend vive en Render (nube)
-  # y le pega a esta URL publica del backend local (por eso el tunel apunta al
-  # backend, no al frontend; ver nota de la rubrica sobre Vercel/Render).
+  # NGROK - tunel inverso que expone el BACKEND DE IA (backend:8000) a Internet.
+  # Arquitectura con FRONTEND EN RENDER:
   #
-  # Apunta a 'backend:8000' por la red interna de Docker (NO a localhost). El
-  # token y el dominio se leen del .env (NGROK_AUTHTOKEN / NGROK_DOMAIN).
+  #   [ navegador ] --> [ frontend en RENDER (tailo-swingtails.onrender.com) ]
+  #        |-- /api/*                     rewrite Render --> [ Auth API onrender ]  (cookie)
+  #        |-- /chat,/conversations,...   rewrite Render --> [ ngrok -> backend:8000 ]  (cookie fwd)
+  #
+  # El tunel apunta al BACKEND directo para que el rewrite de Render reenvie la
+  # cookie 'accessToken' y el backend la lea (server.py la acepta por cookie).
+  #
+  # (NOTA: si prefieres la demo TODO-EN-UNO por el tunel same-origin -mas robusto,
+  #  el SSE fluye seguro-, cambia 'backend:8000' por 'frontend:80' y abre la URL
+  #  del tunel en el navegador en vez de la de Render.)
   # El log de peticiones se ve con:  docker compose logs -f ngrok
   # ---------------------------------------------------------------------------
   ngrok:
