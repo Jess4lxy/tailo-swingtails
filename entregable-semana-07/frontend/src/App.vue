@@ -1099,6 +1099,25 @@ export default {
       }
     },
 
+    mapUserFromToken(token) {
+      try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        const payload = JSON.parse(jsonPayload);
+        return {
+          id: payload.id || payload.userId || payload.user_id,
+          name: payload.name || 'Usuario',
+          email: payload.email || '',
+          role: payload.role || null
+        };
+      } catch (e) {
+        return null;
+      }
+    },
+
     // Authentication handlers
     async handleLogin() {
       this.loginLoading = true;
@@ -1108,8 +1127,6 @@ export default {
       try {
         const response = await fetch(`${this.apiBase}/api/auth/login`, {
           method: 'POST',
-          // (H-03) credentials:'include' permite que el navegador GUARDE la
-          // cookie HttpOnly del Refresh Token que envia la Auth API (Set-Cookie).
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json'
@@ -1120,22 +1137,33 @@ export default {
           })
         });
 
-        const resData = await response.json();
+        let resData = {};
+        try {
+          resData = await response.json();
+        } catch (jsonErr) {
+          throw new Error(`Error en el servidor (${response.status} ${response.statusText}). Intenta de nuevo.`);
+        }
+
         if (!response.ok || resData.status === 'error') {
-          const msg = resData.message || 'Error de credenciales en SwingTails';
+          const msg = resData.message || `Error de credenciales (${response.status})`;
           if (response.status === 403 || /confirmar|verificar|bandeja/i.test(msg)) {
             this.showResendBtn = true;
           }
           throw new Error(msg);
         }
 
-        const dataObj = resData.data || {};
-        if (!dataObj.user) {
+        const dataObj = resData.data || resData || {};
+        let user = dataObj.user;
+        if (!user && (dataObj.accessToken || resData.accessToken)) {
+          user = this.mapUserFromToken(dataObj.accessToken || resData.accessToken);
+        }
+
+        if (!user) {
           throw new Error('No se devolvió la información del usuario desde el servidor');
         }
 
-        this.currentUser = dataObj.user;
-        this.currentUserId = dataObj.user.id;
+        this.currentUser = user;
+        this.currentUserId = user.id;
         this.isLoggedIn = true;
         this.loadConversationsList();
         if (this.activeConversationId) {
