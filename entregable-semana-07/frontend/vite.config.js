@@ -12,5 +12,14 @@ export default defineConfig({
         secure: false,
       }
     }
+  },
+  preview: {
+    proxy: {
+      '/api': {
+        target: 'https://swingtails-api-yz02.onrender.com',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   }
 })

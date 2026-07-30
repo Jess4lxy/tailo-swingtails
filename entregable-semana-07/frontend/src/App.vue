@@ -755,8 +755,8 @@ export default {
       // o, en su defecto, el mismo origen. NO configurable en runtime.
       backendUrl: import.meta.env.VITE_BACKEND_URL || window.location.origin,
 
-      // API publica de SwingTails: proxy de Nginx para forzar SameSite: strict
-      apiBase: '',
+      // API publica de SwingTails: proxy de Nginx/Vite o fallback a Render
+      apiBase: import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? '' : (window.location.hostname === 'localhost' ? '' : 'https://swingtails-api-yz02.onrender.com')),
 
       // Pantalla de acceso: 'login' | 'register'. El registro se agrego para
       // que gente externa pueda crear su cuenta y probar el agente sin
@@ -1125,7 +1125,8 @@ export default {
       this.showResendBtn = false;
       this.resendMessage = '';
       try {
-        const response = await fetch(`${this.apiBase}/api/auth/login`, {
+        let url = `${this.apiBase}/api/auth/login`;
+        let response = await fetch(url, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -1137,11 +1138,29 @@ export default {
           })
         });
 
-        let resData = {};
+        let text = await response.text();
+        let resData = null;
         try {
-          resData = await response.json();
+          resData = JSON.parse(text);
         } catch (jsonErr) {
-          throw new Error(`Error en el servidor (${response.status} ${response.statusText}). Intenta de nuevo.`);
+          if (this.apiBase === '' || !url.includes('onrender.com')) {
+            const fallbackUrl = 'https://swingtails-api-yz02.onrender.com/api/auth/login';
+            const fallbackResp = await fetch(fallbackUrl, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: this.email, password: this.password })
+            });
+            const fallbackText = await fallbackResp.text();
+            try {
+              resData = JSON.parse(fallbackText);
+              response = fallbackResp;
+            } catch (fallbackErr) {
+              throw new Error(`Error en el servidor (${response.status} ${response.statusText}). Intenta de nuevo.`);
+            }
+          } else {
+            throw new Error(`Error en el servidor (${response.status} ${response.statusText}). Intenta de nuevo.`);
+          }
         }
 
         if (!response.ok || resData.status === 'error') {
