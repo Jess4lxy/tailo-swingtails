@@ -755,11 +755,8 @@ export default {
       // o, en su defecto, el mismo origen. NO configurable en runtime.
       backendUrl: import.meta.env.VITE_BACKEND_URL || window.location.origin,
 
-      // API publica de SwingTails: en desarrollo (npm run dev) usa el proxy de Vite ('')
-      // para evitar bloqueos de CORS del navegador hacia Render. En producción usa VITE_API_BASE o la URL de Render.
-      apiBase: import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? '' : 'https://swingtails-api-yz02.onrender.com'),
-      
-      // apiBase: import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? '' : 'http://localhost:3001'),
+      // API publica de SwingTails: proxy de Nginx para forzar SameSite: strict
+      apiBase: '',
 
       // Pantalla de acceso: 'login' | 'register'. El registro se agrego para
       // que gente externa pueda crear su cuenta y probar el agente sin
@@ -797,11 +794,8 @@ export default {
       // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
       // Asi el formulario no aparece en rojo desde el primer segundo.
       touched: { name: false, email: false, phone: false, password: false, password2: false },
-      // (H-03) El Access Token vive SOLO en memoria (nunca en localStorage). El
-      // Refresh Token lo guarda la Auth API en cookie HttpOnly y con ella se
-      // renueva (silentReauth). Ya NO guardamos email/password.
-      jwt: '',
-      manualJwt: '',
+      // (H-03) Access y Refresh tokens ahora viven seguros como cookies HttpOnly.
+      // Se removio JWT en memoria y localStorage.
       currentUserId: null,
       currentUser: null,
       isLoggedIn: false,
@@ -921,24 +915,24 @@ export default {
     }
   },
   async mounted() {
-    // Auto-reautenticación silenciosa al montar la app usando cookie (H-03)
+    // Auto-reautenticación silenciosa al montar la app
     try {
-      const localRefresh = localStorage.getItem('swingtails_refresh');
       const res = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // Para enviar la cookie HttpOnly al API Gateway
-        body: JSON.stringify(localRefresh ? { refreshToken: localRefresh } : {})
+        credentials: 'include',
+        body: JSON.stringify({})
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.status === 'success') {
-          // Fallback: guardar token en localStorage si el navegador bloquea cookies de terceros
-          if (data.data && data.data.refreshToken) {
-            localStorage.setItem('swingtails_refresh', data.data.refreshToken);
+        if (data.status === 'success' && data.data && data.data.user) {
+          this.currentUser = data.data.user;
+          this.currentUserId = data.data.user.id;
+          this.isLoggedIn = true;
+          this.loadConversationsList();
+          if (this.activeConversationId) {
+            this.loadConversation(this.activeConversationId);
           }
-          const token = data.data.accessToken;
-          this.decodeAndValidateManualJwt(token);
         }
       }
     } catch (e) {
@@ -1136,15 +1130,18 @@ export default {
         }
 
         const dataObj = resData.data || {};
-        const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
-        if (!token) {
-          throw new Error('No se devolvió un token de acceso desde el servidor');
+        if (!dataObj.user) {
+          throw new Error('No se devolvió la información del usuario desde el servidor');
         }
 
-        // (H-03) El Refresh Token viaja en la cookie HttpOnly (no se toca desde
-        // JS). El Access Token queda SOLO en memoria (setLoginSession). No se
-        // guardan email/password: la renovacion usa la cookie, no credenciales.
-        this.setLoginSession(token);
+        this.currentUser = dataObj.user;
+        this.currentUserId = dataObj.user.id;
+        this.isLoggedIn = true;
+        this.loadConversationsList();
+        if (this.activeConversationId) {
+          this.loadConversation(this.activeConversationId);
+        }
+        this.$nextTick(() => { this.focusInput(); });
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
           this.loginError = 'No se pudo conectar con la API de SwingTails (Failed to fetch). Verifica tu conexión o intenta en unos segundos (Render cold start).';
@@ -1222,86 +1219,16 @@ export default {
       });
     },
 
-    mapUserFromToken(token) {
-      try {
-        const base64Url = token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
-          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-        
-        const payload = JSON.parse(jsonPayload);
-        
-        // Similar mapping function to userResponseToEntity in Dart
-        return {
-          id: payload.id || payload.userId || payload.user_id,
-          name: payload.name || 'Usuario',
-          email: payload.email || '',
-          phone: payload.phone_number || payload.phone || null,
-          imageUrl: payload.image_url || payload.imageUrl || null,
-          role: payload.role || null,
-          address: payload.street ? {
-            street: payload.street,
-            exteriorNumber: payload.exterior_number,
-            neighborhood: payload.neighborhood,
-            postalCode: payload.postal_code,
-            city: payload.city,
-            state: payload.state
-          } : null
-        };
-      } catch (e) {
-        console.error('Error decoding user from token:', e);
-        return null;
-      }
-    },
-    decodeAndValidateManualJwt(token) {
-      const user = this.mapUserFromToken(token);
-      if (user && user.id) {
-        this.currentUser = user;
-        this.currentUserId = user.id;
-        this.setLoginSession(token);
-      } else {
-        this.loginError = 'Formato de JWT inválido o no contiene información de usuario';
-        this.isLoggedIn = false;
-        this.jwt = '';
-      }
-    },
-    setLoginSession(token) {
-      // (H-03) Access Token SOLO en memoria; nunca en localStorage.
-      this.jwt = token;
-      
-      const user = this.mapUserFromToken(token);
-      if (user && user.id) {
-        this.currentUser = user;
-        this.currentUserId = user.id;
-      } else {
-        this.handleLogout();
-        return;
-      }
 
-      this.isLoggedIn = true;
-      this.loadConversationsList();
-
-      if (this.activeConversationId) {
-        this.loadConversation(this.activeConversationId);
-      }
-      
-      this.$nextTick(() => {
-        this.focusInput();
-      });
-    },
     handleLogout() {
-      // (H-03) Pide a la Auth API que INVALIDE la cookie HttpOnly del Refresh
-      // Token (Set-Cookie de borrado). credentials:'include' envia la cookie.
-      // Se manda el Access Token de memoria por si el backend lo requiere.
-      // Fire-and-forget: no bloqueamos el cierre de sesion si la red falla.
+      // Pide a la Auth API que INVALIDE la cookie HttpOnly del Refresh y Access
+      // Token (Set-Cookie de borrado). credentials:'include' envia las cookies.
       try {
         fetch(`${this.apiBase}/api/auth/logout`, {
           method: 'POST',
           credentials: 'include',
           headers: {
-            'Content-Type': 'application/json',
-            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
+            'Content-Type': 'application/json'
           },
         }).catch(() => {});
       } catch (e) { /* ignore */ }
@@ -1317,52 +1244,33 @@ export default {
       localStorage.removeItem('swingtails_active_conv');
     },
 
-    // ¿El JWT ya venció? (lee el claim `exp`; margen de 30s de skew).
-    // Los access tokens de SwingTails duran ~30 min y hoy NO hay refresh
-    // funcional en la API, así que al vencer hay que reautenticar.
-    isJwtExpired(token) {
-      if (!token) return true;
-      try {
-        const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-        const payload = JSON.parse(atob(base64));
-        if (!payload.exp) return false; // sin exp: no lo bloqueamos
-        return Date.now() / 1000 > payload.exp + 30;
-      } catch (e) {
-        return false;
-      }
-    },
 
-    // (H-03) Renovacion SILENCIOSA del Access Token usando el Refresh Token de
-    // la cookie HttpOnly. NO usa email/password. Devuelve true si obtuvo un token
-    // valido. `fullSetup=true` (al cargar la app) ademas entra a la sesion y
-    // carga las conversaciones; en caliente (retry por 401) solo renueva el token
-    // sin recargar la vista para no interrumpir un mensaje en curso.
+
+    // Renovacion SILENCIOSA del Access Token usando el Refresh Token de
+    // la cookie HttpOnly.
     async silentReauth(fullSetup = false) {
       try {
-        const localRefresh = localStorage.getItem('swingtails_refresh');
         const response = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
           method: 'POST',
-          credentials: 'include',            // envia la cookie HttpOnly del refresh
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(localRefresh ? { refreshToken: localRefresh } : {})
+          body: JSON.stringify({})
         });
         if (!response.ok) return false;
         const resData = await response.json();
-        if (resData.status === 'error') return false;
-        const dataObj = resData.data || {};
-        const token = dataObj.accessToken || resData.accessToken || dataObj.token || resData.token;
-        if (dataObj.refreshToken) localStorage.setItem('swingtails_refresh', dataObj.refreshToken);
-        if (!token || this.isJwtExpired(token)) return false;
+        if (resData.status !== 'success' || !resData.data || !resData.data.user) return false;
+
+        const user = resData.data.user;
+        this.currentUser = user;
+        this.currentUserId = user.id;
+        this.isLoggedIn = true;
 
         if (fullSetup) {
-          // Primer arranque: sesion completa (decodifica usuario, carga chats).
-          this.setLoginSession(token);
-        } else {
-          // Renovacion en caliente: solo el token en memoria.
-          this.jwt = token;
-          const user = this.mapUserFromToken(token);
-          if (user && user.id) { this.currentUser = user; this.currentUserId = user.id; }
-          this.isLoggedIn = true;
+          this.loadConversationsList();
+          if (this.activeConversationId) {
+            this.loadConversation(this.activeConversationId);
+          }
+          this.$nextTick(() => { this.focusInput(); });
         }
         return true;
       } catch (e) {
@@ -1381,8 +1289,8 @@ export default {
     async loadConversationsList() {
       try {
         const response = await fetch(`${this.backendUrl}/conversations`, {
+          credentials: 'include',
           headers: {
-            'Authorization': `Bearer ${this.jwt}`,
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1403,8 +1311,8 @@ export default {
 
       try {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
+          credentials: 'include',
           headers: {
-            'Authorization': `Bearer ${this.jwt}`,
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1439,8 +1347,8 @@ export default {
       try {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
           method: 'DELETE',
+          credentials: 'include',
           headers: {
-            'Authorization': `Bearer ${this.jwt}`,
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1580,15 +1488,8 @@ export default {
         await this.ensureLocation();
       }
 
-      // Sesión vencida: intentamos re-login silencioso; si no hay credenciales
-      // en memoria (o falla), recién ahí pedimos al usuario iniciar sesión.
-      if (this.isJwtExpired(this.jwt)) {
-        const ok = await this.silentReauth();
-        if (!ok) {
-          this.forceReauth('Tu sesión expiró. Inicia sesión de nuevo para continuar.');
-          return;
-        }
-      }
+      // En lugar de verificar el JWT aquí, confiamos en el 401 del fetch
+      // para disparar el silentReauth.
 
       this.inputMessage = '';
       
@@ -1616,9 +1517,9 @@ export default {
       try {
         const response = await fetch(`${this.backendUrl}/chat/stream`, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.jwt}`,
             'ngrok-skip-browser-warning': 'true'
           },
           body: JSON.stringify({
