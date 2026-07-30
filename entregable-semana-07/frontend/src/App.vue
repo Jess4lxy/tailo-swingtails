@@ -936,10 +936,18 @@ export default {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.status === 'success' && data.data && data.data.user) {
-          
-          this.currentUser = data.data.user;
-          this.currentUserId = data.data.user.id;
+        const d = data.data || {};
+        // Igual que en login: guardamos el access token en memoria para el Bearer
+        // del backend de IA. Sin esto, al recargar la pagina el chat/conversaciones
+        // fallan con "Falta el header Authorization: Bearer <jwt>".
+        const token = d.accessToken || d.token;
+        if (data.status === 'success' && token) {
+          this.jwt = token;
+          const user = d.user || this.mapUserFromToken(token);
+          if (user) {
+            this.currentUser = user;
+            this.currentUserId = user.id;
+          }
           this.isLoggedIn = true;
           this.loadConversationsList();
           if (this.activeConversationId) {
@@ -1171,7 +1179,11 @@ export default {
 
         const dataObj = resData.data || resData || {};
         let user = dataObj.user;
-        const token = false;
+        // El access token viene en el body (la cookie es HttpOnly y JS no la lee).
+        // Se guarda en MEMORIA para mandarlo como Bearer al backend de IA (ngrok),
+        // que autentica por header, no por cookie. Sin esto, /chat y /conversations
+        // fallaban con "Falta el header Authorization: Bearer <jwt>".
+        const token = dataObj.accessToken || dataObj.token || false;
         if (token) {
           this.jwt = token;
           if (!user) user = this.mapUserFromToken(token);
