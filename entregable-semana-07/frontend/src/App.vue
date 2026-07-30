@@ -1158,25 +1158,7 @@ export default {
         try {
           resData = JSON.parse(text);
         } catch (jsonErr) {
-          if (this.apiBase === '' || !url.includes('onrender.com')) {
-            const fallbackUrl = 'https://swingtails-api-yz02.onrender.com/api/auth/login';
-            const fallbackResp = await fetch(fallbackUrl, {
-          credentials: 'include',
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: this.email, password: this.password })
-            });
-            const fallbackText = await fallbackResp.text();
-            try {
-              resData = JSON.parse(fallbackText);
-              response = fallbackResp;
-            } catch (fallbackErr) {
-              throw new Error(`Error en el servidor (${response.status} ${response.statusText}). Intenta de nuevo.`);
-            }
-          } else {
-            throw new Error(`Error en el servidor (${response.status} ${response.statusText}). Intenta de nuevo.`);
-          }
+          throw new Error(`El servidor (Proxy) no devolvió un JSON válido. Probablemente devolvió HTML. Revisa la configuración de Nginx o Render para /api/`);
         }
 
         if (!response.ok || resData.status === 'error') {
