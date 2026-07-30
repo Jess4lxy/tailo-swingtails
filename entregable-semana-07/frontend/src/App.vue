@@ -1336,7 +1336,6 @@ export default {
     async loadConversationsList() {
       try {
         const response = await fetch(`${this.backendUrl}/conversations`, {
-          credentials: 'include',
           headers: {
             'ngrok-skip-browser-warning': 'true'
           }
@@ -1358,7 +1357,6 @@ export default {
 
       try {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
-          credentials: 'include',
           headers: {
             'ngrok-skip-browser-warning': 'true'
           }
@@ -1394,7 +1392,6 @@ export default {
       try {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
           method: 'DELETE',
-          credentials: 'include',
           headers: {
             'ngrok-skip-browser-warning': 'true'
           }
@@ -1564,7 +1561,6 @@ export default {
       try {
         const response = await fetch(`${this.backendUrl}/chat/stream`, {
           method: 'POST',
-          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             'ngrok-skip-browser-warning': 'true'
