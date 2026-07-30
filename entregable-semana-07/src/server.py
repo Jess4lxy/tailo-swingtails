@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import tempfile
 import time
 from pathlib import Path
@@ -54,10 +55,14 @@ from config import (
     LLM_MODEL,
     OLLAMA_HOST,
     OLLAMA_TIMEOUT,
+    RATE_JITTER_FRACTION,
     RATE_LIMIT_CHAT,
     RATE_LIMIT_ENABLED,
     RATE_LIMIT_TRANSCRIBE,
     RATE_LIMIT_WINDOW,
+    RATE_PENALTY_BASE,
+    RATE_PENALTY_DECAY,
+    RATE_PENALTY_MAX,
     TOP_K,
     TRANSCRIBE_MAX_BYTES,
     WEB_DIST,
@@ -110,19 +115,61 @@ async def _security_headers(request, call_next):
 # de un proceso; evita abuso del LLM y fuerza-bruta contra el agente.
 # ---------------------------------------------------------------------------
 _rate_buckets: dict[str, list[float]] = {}
+# Penalizacion por clave: {clave -> {"until": ts_desbloqueo, "violations": n, "seen": ts}}
+_rate_penalty: dict[str, dict] = {}
 
 
 def _rate_limit_ok(key: str, max_req: int, window_s: int = RATE_LIMIT_WINDOW) -> bool:
-    """True si la peticion cabe dentro del limite; False si se excedio."""
+    """True si la peticion cabe dentro del limite; False si se excedio.
+
+    NO es una ventana deslizante ingenua (que seria PREDECIBLE: el atacante se
+    queda en `max_req-1` y ataca sin fin). Anade dos defensas anti-pacing:
+
+      1) JITTER: el umbral efectivo de esta comprobacion es `max_req` menos un
+         valor aleatorio (hasta RATE_JITTER_FRACTION del limite). Asi el punto
+         exacto de corte cambia en cada evaluacion y NO se puede predecir cuantos
+         intentos quedan para pararse justo antes del bloqueo.
+
+      2) PENALIZACION EXPONENCIAL persistente: cada vez que se roza el limite se
+         impone un bloqueo (BASE, 2*BASE, 4*BASE... hasta MAX) que se respeta
+         AUNQUE el atacante espacie sus intentos. La reincidencia solo se olvida
+         tras RATE_PENALTY_DECAY seg de calma real. Resultado: "pararse justo
+         antes" deja de ser rentable porque, con el jitter, tarde o temprano se
+         cruza el umbral y el castigo crece geometricamente.
+    """
     if not RATE_LIMIT_ENABLED:
         return True
     now = time.time()
+
+    # (2) Si hay una penalizacion vigente, se bloquea sin importar el ritmo.
+    pen = _rate_penalty.get(key)
+    if pen is not None:
+        if now < pen["until"]:
+            pen["seen"] = now
+            return False
+        # Ya no esta bloqueado: olvida la reincidencia solo tras calma prolongada
+        # (evita castigar de por vida a un usuario legitimo que se paso una vez).
+        if now - pen["seen"] > RATE_PENALTY_DECAY:
+            _rate_penalty.pop(key, None)
+
     cutoff = now - window_s
     q = _rate_buckets.setdefault(key, [])
     while q and q[0] < cutoff:
         q.pop(0)
-    if len(q) >= max_req:
+
+    # (1) Umbral efectivo con jitter: corte no determinista.
+    jitter = random.randint(0, max(1, int(max_req * RATE_JITTER_FRACTION)))
+    effective = max(1, max_req - jitter)
+
+    if len(q) >= effective:
+        p = _rate_penalty.get(key) or {"violations": 0}
+        p["violations"] = p.get("violations", 0) + 1
+        block = min(RATE_PENALTY_BASE * (2 ** (p["violations"] - 1)), RATE_PENALTY_MAX)
+        p["until"] = now + block
+        p["seen"] = now
+        _rate_penalty[key] = p
         return False
+
     q.append(now)
     return True
 

@@ -202,6 +202,18 @@ RATE_LIMIT_WINDOW = int(os.getenv("TAILO_RATE_LIMIT_WINDOW", "60"))       # segu
 RATE_LIMIT_CHAT = int(os.getenv("TAILO_RATE_LIMIT_CHAT", "20"))          # chats/ventana
 RATE_LIMIT_TRANSCRIBE = int(os.getenv("TAILO_RATE_LIMIT_TRANSCRIBE", "15"))  # audios/ventana
 
+# Anti-pacing: una ventana deslizante con umbral FIJO es predecible -> el atacante
+# se queda en (limite-1) y ataca indefinidamente. Dos defensas:
+#   1) JITTER en el umbral: el punto exacto de corte varia, no se puede predecir
+#      "cuantos intentos me quedan" para pararse justo antes.
+#   2) Penalizacion EXPONENCIAL persistente: cada vez que se roza el limite el
+#      bloqueo crece (BASE, 2*BASE, 4*BASE... hasta MAX) y se mantiene aunque el
+#      atacante espacie sus intentos; solo se olvida tras DECAY seg de calma.
+RATE_PENALTY_BASE = int(os.getenv("TAILO_RATE_PENALTY_BASE", "30"))       # seg, 1er bloqueo
+RATE_PENALTY_MAX = int(os.getenv("TAILO_RATE_PENALTY_MAX", "900"))        # seg, tope (15 min)
+RATE_PENALTY_DECAY = int(os.getenv("TAILO_RATE_PENALTY_DECAY", "1800"))   # seg de calma para olvidar
+RATE_JITTER_FRACTION = float(os.getenv("TAILO_RATE_JITTER_FRACTION", "0.34"))  # 0..1 del limite
+
 # ---------------------------------------------------------------------------
 # Frontend estatico servido por el MISMO backend (opcional)
 # ---------------------------------------------------------------------------

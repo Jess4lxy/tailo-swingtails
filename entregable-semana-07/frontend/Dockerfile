@@ -20,6 +20,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Origen publico del backend (tunel ngrok/Cloudflare) para inyectarlo en el build
+# via VITE_BACKEND_URL -> Vite lo pone en la app Y en el connect-src del CSP de
+# index.html (%VITE_BACKEND_URL%). Vacio por defecto: en el modo Docker el front
+# es MISMO ORIGEN que nginx, asi que no se hardcodea ninguna URL de tunel.
+#   docker build --build-arg VITE_BACKEND_URL=https://<tu-dominio>.ngrok-free.dev
+ARG VITE_BACKEND_URL=""
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
+
 # Resto del codigo del front y compilacion a /app/dist.
 COPY . .
 RUN npm run build
