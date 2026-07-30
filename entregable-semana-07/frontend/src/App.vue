@@ -1088,18 +1088,25 @@ export default {
         }
 
         // (H-03) Cuenta creada -> iniciamos sesion con LOGIN normal para que la
-        // Auth API entregue la cookie HttpOnly del Refresh Token (el endpoint de
-        // registro podria no setearla). El Access Token queda solo en memoria.
+        // Auth API entregue la cookie HttpOnly del Refresh Token.
         this.email = body.email;
         this.password = this.regPassword;
-        await this.handleLogin();
+        
+        try {
+          await this.handleLogin();
+        } catch (loginErr) {
+          // Ignorado
+        }
 
         if (this.isLoggedIn) {
           this.regName = this.regEmail = this.regPhone = '';
           this.regPassword = this.regPassword2 = '';
         } else {
+          // Si falló el login automático (ej. porque la cuenta requiere confirmar email),
+          // limpiamos el error rojo que dejó handleLogin() y mostramos nuestro mensaje de éxito verde.
+          this.loginError = '';
           this.authMode = 'login';
-          this.loginError = 'Tu cuenta se creó correctamente. Verifica tu correo para continuar.';
+          this.loginSuccess = 'Tu cuenta se creó correctamente. Por favor verifica tu bandeja de entrada o spam para continuar.';
         }
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
