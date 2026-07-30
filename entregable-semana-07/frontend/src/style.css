@@ -40,11 +40,9 @@
   --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Forzar visibilidad y capa superior para la insignia de reCAPTCHA v3 */
+/* Ocultar la insignia flotante de reCAPTCHA v3 para no obstruir la interfaz (permitido por términos de Google al incluir los textos legales) */
 .grecaptcha-badge {
-  z-index: 999999 !important;
-  right: 16px !important;
-  bottom: 16px !important;
+  visibility: hidden !important;
 }
 
 * {
