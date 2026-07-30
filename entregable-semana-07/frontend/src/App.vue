@@ -752,8 +752,8 @@ export default {
       // de localStorage, lo que permitia a un XSS (o al propio usuario) redirigir
       // el backend a un servidor atacante y robar conversaciones/credenciales.
       // AHORA es FIJA en el build: solo VITE_BACKEND_URL (inyectada al compilar)
-      // o, en su defecto, el mismo origen. NO configurable en runtime.
-      backendUrl: import.meta.env.VITE_BACKEND_URL || window.location.origin,
+      // o, en su defecto, el mismo origen.      // IA Backend de Tailo: proxy de Nginx/Vite
+      backendUrl: '',
 
       // API publica de SwingTails: proxy de Nginx/Vite o fallback a Render
       apiBase: '',
