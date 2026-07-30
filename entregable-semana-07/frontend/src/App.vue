@@ -134,16 +134,7 @@
             </p>
           </div>
 
-          <!-- Google reCAPTCHA Widget (Hallazgo C-04) -->
-          <div class="form-group" style="margin-bottom: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 78px;">
-            <div id="recaptcha-widget"></div>
-            <p v-if="!captchaToken" style="font-size: 0.75rem; color: #8c8c8c; margin-top: 6px;">
-              🔒 Completa la casilla de reCAPTCHA para habilitar el registro
-            </p>
-            <p v-else style="font-size: 0.8rem; color: #27ae60; margin-top: 6px; font-weight: 600;">
-              ✓ Verificación de reCAPTCHA completada
-            </p>
-          </div>
+          <!-- reCAPTCHA v3 es invisible y se ejecuta al dar submit -->
 
           <div v-if="registerError" style="color: #e74c3c; font-size: 0.85rem; margin-bottom: 16px; text-align: center; font-weight: 500;">
             {{ registerError }}
@@ -890,7 +881,7 @@ export default {
     },
     registerFormValid() {
       return this.nameValid && this.emailValid && this.phoneValid
-        && this.passwordValid && this.passwordsMatch && Boolean(this.captchaToken);
+        && this.passwordValid && this.passwordsMatch;
     },
 
     userNameLetter() {
@@ -1049,12 +1040,17 @@ export default {
         return;
       }
 
-      if (!this.captchaToken) {
-        this.registerError = 'Por favor completa la casilla de verificación reCAPTCHA para continuar.';
-        return;
-      }
-
       this.registerLoading = true;
+
+      // Obtener el token de reCAPTCHA v3 (invisible)
+      try {
+        const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
+        if (siteKey && window.grecaptcha) {
+          this.captchaToken = await window.grecaptcha.execute(siteKey, { action: 'register' });
+        }
+      } catch (e) {
+        console.warn('Error ejecutando reCAPTCHA v3:', e);
+      }
       try {
         const body = {
           // (M-01) Sanitizacion por LISTA BLANCA: solo letras (con acentos),
@@ -1224,48 +1220,19 @@ export default {
 
     initRecaptcha() {
       if (document.getElementById('recaptcha-script')) {
-        this.renderRecaptcha();
         return;
       }
-      window.onloadRecaptchaCallback = () => {
-        this.renderRecaptcha();
-      };
+      const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
+      if (!siteKey) {
+        console.warn('VITE_RECAPTCHA_SITE_KEY no configurada');
+        return;
+      }
       const script = document.createElement('script');
       script.id = 'recaptcha-script';
-      script.src = 'https://www.google.com/recaptcha/api.js?onload=onloadRecaptchaCallback&render=explicit';
+      script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
-    },
-    renderRecaptcha() {
-      this.$nextTick(() => {
-        const container = document.getElementById('recaptcha-widget');
-        if (window.grecaptcha && container) {
-          try {
-            container.innerHTML = '';
-            const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '';
-            if (!siteKey) {
-              console.warn('VITE_RECAPTCHA_SITE_KEY no configurada');
-              return;
-            }
-            window.grecaptcha.render('recaptcha-widget', {
-              sitekey: siteKey,
-              callback: (token) => {
-                this.captchaToken = token;
-                this.registerError = '';
-              },
-              'expired-callback': () => {
-                this.captchaToken = '';
-              },
-              'error-callback': () => {
-                this.captchaToken = '';
-              }
-            });
-          } catch (e) {
-            console.warn('reCAPTCHA notice:', e);
-          }
-        }
-      });
     },
 
 
