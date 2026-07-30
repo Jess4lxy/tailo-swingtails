@@ -52,6 +52,7 @@ from config import (
     ADMIN_USER_IDS,
     CORS_ORIGINS,
     ENABLE_DOCS,
+    EXPOSE_DEBUG_FIELDS,
     LLM_MODEL,
     OLLAMA_HOST,
     OLLAMA_TIMEOUT,
@@ -399,6 +400,11 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
     )
 
     done_ev.update(conversation_id=conv_id or "", user_id=user_id, turns=turns, compacted=compacted)
+    # (Reporte V2 H-03) No filtrar los fragmentos RAG crudos al cliente salvo en
+    # modo debug. El campo `sources` (solo nombres de documento) SI se conserva
+    # para poder citar la fuente en la UI.
+    if not EXPOSE_DEBUG_FIELDS:
+        done_ev["context"] = []
     yield done_ev
 
 
