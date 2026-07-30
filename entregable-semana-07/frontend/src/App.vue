@@ -756,7 +756,7 @@ export default {
       backendUrl: import.meta.env.VITE_BACKEND_URL || window.location.origin,
 
       // API publica de SwingTails: proxy de Nginx/Vite o fallback a Render
-      apiBase: import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? '' : (window.location.hostname === 'localhost' ? '' : 'https://swingtails-api-yz02.onrender.com')),
+      apiBase: '',
 
       // Pantalla de acceso: 'login' | 'register'. El registro se agrego para
       // que gente externa pueda crear su cuenta y probar el agente sin
