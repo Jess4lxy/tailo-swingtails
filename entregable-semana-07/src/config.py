@@ -214,6 +214,12 @@ RATE_PENALTY_MAX = int(os.getenv("TAILO_RATE_PENALTY_MAX", "900"))        # seg,
 RATE_PENALTY_DECAY = int(os.getenv("TAILO_RATE_PENALTY_DECAY", "1800"))   # seg de calma para olvidar
 RATE_JITTER_FRACTION = float(os.getenv("TAILO_RATE_JITTER_FRACTION", "0.34"))  # 0..1 del limite
 
+# Reporte V2 H-03/M-06: la respuesta de /chat incluia el campo `context` con los
+# FRAGMENTOS RAG crudos (contenido de los .md de la base de conocimiento). No es
+# secreto (son guias publicas) pero es exposicion innecesaria. Por defecto NO se
+# exponen los campos de depuracion (context crudo). Pon "1" solo para demos/debug.
+EXPOSE_DEBUG_FIELDS = os.getenv("TAILO_EXPOSE_DEBUG_FIELDS", "0") in {"1", "true", "True"}
+
 # ---------------------------------------------------------------------------
 # Frontend estatico servido por el MISMO backend (opcional)
 # ---------------------------------------------------------------------------

@@ -915,6 +915,16 @@ export default {
     }
   },
   async mounted() {
+    // --- Limpieza de datos heredados de builds anteriores --------------------
+    // Versiones viejas del front guardaban el JWT y el refresh token en
+    // localStorage (H-06 / A-04: robables por XSS). El build actual NO los usa
+    // (token en MEMORIA + cookie HttpOnly). Purgamos esas claves en CADA arranque
+    // para que ningun usuario (p.ej. el profesor) arrastre credenciales viejas
+    // sin tener que limpiar el navegador a mano. Es idempotente e inofensivo.
+    // NOTA: 'swingtails_active_conv' SI es de uso actual y se conserva.
+    ['swingtails_jwt', 'swingtails_refresh', 'swingtails_backend_url']
+      .forEach(k => { try { localStorage.removeItem(k); } catch (_) {} });
+
     // Auto-reautenticación silenciosa al montar la app
     try {
       const res = await fetch(`${this.apiBase}/api/auth/refresh-token`, {

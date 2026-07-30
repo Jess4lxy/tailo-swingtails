@@ -1,0 +1,51 @@
+name: Deploy frontend a Render
+
+# Dispara el deploy del sitio estatico (frontend) en Render llamando a su
+# Deploy Hook. Se usa como alternativa/refuerzo del auto-deploy nativo de Render
+# cuando este no se dispara de forma fiable.
+#
+# Requisito (una sola vez):
+#   1. En Render: Settings -> Deploy -> "Regenerate hook" y copia la URL nueva.
+#   2. En GitHub: repo -> Settings -> Secrets and variables -> Actions ->
+#      "New repository secret":
+#         Name:   RENDER_DEPLOY_HOOK
+#         Value:  https://api.render.com/deploy/srv-XXXX?key=YYYY   (el hook nuevo)
+#   3. (Recomendado) En Render, pon Auto-Deploy en "No" para no desplegar dos
+#      veces (una por Render y otra por esta Action).
+
+on:
+  push:
+    branches: [master]
+    # Igual que el Root Directory de Render: solo despliega si cambia el frontend.
+    # Si quieres que CUALQUIER commit despliegue, borra este bloque 'paths:'.
+    paths:
+      - 'entregable-semana-07/frontend/**'
+      - '.github/workflows/deploy-frontend-render.yml'
+  # Permite dispararlo a mano desde la pestaña Actions (boton "Run workflow").
+  workflow_dispatch: {}
+
+# Evita deploys solapados: si llega un push mientras corre otro, cancela el viejo.
+concurrency:
+  group: render-frontend-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disparar Deploy Hook de Render
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::Falta el secret RENDER_DEPLOY_HOOK. Configuralo en Settings -> Secrets -> Actions."
+            exit 1
+          fi
+          echo "Disparando deploy del frontend en Render..."
+          code=$(curl -sS -o response.txt -w "%{http_code}" -X POST "$HOOK")
+          echo "Render respondio HTTP $code"
+          echo "Respuesta: $(cat response.txt)"
+          case "$code" in
+            200|201) echo "✅ Deploy disparado correctamente." ;;
+            *) echo "::error::El Deploy Hook fallo (HTTP $code). Revisa que el secret sea el hook vigente."; exit 1 ;;
+          esac
