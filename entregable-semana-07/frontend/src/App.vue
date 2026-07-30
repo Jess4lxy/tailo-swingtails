@@ -153,9 +153,6 @@
             </template>
           </button>
 
-          <p class="auth-hint">
-            Al crear tu cuenta podrás usar a Tailo para registrar tus mascotas y agendar citas.
-          </p>
           <p style="font-size: 0.72rem; color: var(--text-muted); margin-top: 10px; text-align: center; line-height: 1.3;">
             Este sitio está protegido por reCAPTCHA y se aplican la
             <a href="https://policies.google.com/privacy" target="_blank" rel="noopener" style="color: var(--accent-color); text-decoration: underline;">Política de Privacidad</a> y los
