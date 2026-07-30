@@ -976,7 +976,7 @@ export default {
         this.forgotEmail = this.email;
       }
       if (mode === 'register') {
-        this.renderRecaptcha();
+        this.initRecaptcha();
       }
       // Reinicia los "tocados": al volver al registro no debe aparecer en rojo.
       Object.keys(this.touched).forEach(k => { this.touched[k] = false; });
