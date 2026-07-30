@@ -794,8 +794,8 @@ export default {
       // Un campo solo muestra su error DESPUES de que el usuario lo toco (blur).
       // Asi el formulario no aparece en rojo desde el primer segundo.
       touched: { name: false, email: false, phone: false, password: false, password2: false },
-      // (H-03) Access y Refresh tokens ahora viven seguros como cookies HttpOnly.
-      // Se removio JWT en memoria y localStorage.
+      // (H-03) Access token vive SOLO en memoria (nunca en localStorage).
+      jwt: '',
       currentUserId: null,
       currentUser: null,
       isLoggedIn: false,
@@ -936,6 +936,7 @@ export default {
       if (res.ok) {
         const data = await res.json();
         if (data.status === 'success' && data.data && data.data.user) {
+          this.jwt = data.data.accessToken || '';
           this.currentUser = data.data.user;
           this.currentUserId = data.data.user.id;
           this.isLoggedIn = true;
@@ -1183,8 +1184,10 @@ export default {
 
         const dataObj = resData.data || resData || {};
         let user = dataObj.user;
-        if (!user && (dataObj.accessToken || resData.accessToken)) {
-          user = this.mapUserFromToken(dataObj.accessToken || resData.accessToken);
+        const token = dataObj.accessToken || resData.accessToken;
+        if (token) {
+          this.jwt = token;
+          if (!user) user = this.mapUserFromToken(token);
         }
 
         if (!user) {
@@ -1315,9 +1318,15 @@ export default {
         });
         if (!response.ok) return false;
         const resData = await response.json();
-        if (resData.status !== 'success' || !resData.data || !resData.data.user) return false;
+        if (resData.status !== 'success' || !resData.data) return false;
 
-        const user = resData.data.user;
+        const dataObj = resData.data || resData;
+        const token = dataObj.accessToken || resData.accessToken;
+        if (token) this.jwt = token;
+
+        const user = dataObj.user || (token ? this.mapUserFromToken(token) : null);
+        if (!user) return false;
+
         this.currentUser = user;
         this.currentUserId = user.id;
         this.isLoggedIn = true;
@@ -1347,6 +1356,7 @@ export default {
       try {
         const response = await fetch(`${this.backendUrl}/conversations`, {
           headers: {
+            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1368,6 +1378,7 @@ export default {
       try {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
           headers: {
+            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1403,6 +1414,7 @@ export default {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
           method: 'DELETE',
           headers: {
+            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1573,6 +1585,7 @@ export default {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
             'ngrok-skip-browser-warning': 'true'
           },
           body: JSON.stringify({
