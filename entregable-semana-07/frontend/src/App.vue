@@ -1100,7 +1100,7 @@ export default {
           this.regPassword = this.regPassword2 = '';
         } else {
           this.authMode = 'login';
-          this.loginError = 'Tu cuenta se creó correctamente. Inicia sesión para continuar.';
+          this.loginError = 'Tu cuenta se creó correctamente. Verifica tu correo para continuar.';
         }
       } catch (err) {
         if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
