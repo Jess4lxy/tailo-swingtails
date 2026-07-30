@@ -918,6 +918,7 @@ export default {
     // Auto-reautenticación silenciosa al montar la app
     try {
       const res = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
+          credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -926,7 +927,7 @@ export default {
       if (res.ok) {
         const data = await res.json();
         if (data.status === 'success' && data.data && data.data.user) {
-          this.jwt = data.data.accessToken || '';
+          
           this.currentUser = data.data.user;
           this.currentUserId = data.data.user.id;
           this.isLoggedIn = true;
@@ -991,6 +992,7 @@ export default {
       this.forgotLoading = true;
       try {
         const response = await fetch(`${this.apiBase}/api/auth/forgot-password`, {
+          credentials: 'include',
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: targetEmail })
@@ -1054,6 +1056,7 @@ export default {
         if (this.regPhone.trim()) body.phone_number = this.regPhone.trim();
 
         const response = await fetch(`${this.apiBase}/api/auth/register`, {
+          credentials: 'include',
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -1128,6 +1131,7 @@ export default {
       try {
         let url = `${this.apiBase}/api/auth/login`;
         let response = await fetch(url, {
+          credentials: 'include',
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -1147,6 +1151,7 @@ export default {
           if (this.apiBase === '' || !url.includes('onrender.com')) {
             const fallbackUrl = 'https://swingtails-api-yz02.onrender.com/api/auth/login';
             const fallbackResp = await fetch(fallbackUrl, {
+          credentials: 'include',
               method: 'POST',
               credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
@@ -1174,7 +1179,7 @@ export default {
 
         const dataObj = resData.data || resData || {};
         let user = dataObj.user;
-        const token = dataObj.accessToken || resData.accessToken;
+        const token = false;
         if (token) {
           this.jwt = token;
           if (!user) user = this.mapUserFromToken(token);
@@ -1210,6 +1215,7 @@ export default {
       this.resendMessage = '';
       try {
         const response = await fetch(`${this.apiBase}/api/auth/resend-verification`, {
+          credentials: 'include',
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: emailTarget })
@@ -1275,6 +1281,7 @@ export default {
       // Token (Set-Cookie de borrado). credentials:'include' envia las cookies.
       try {
         fetch(`${this.apiBase}/api/auth/logout`, {
+          credentials: 'include',
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -1301,6 +1308,7 @@ export default {
     async silentReauth(fullSetup = false) {
       try {
         const response = await fetch(`${this.apiBase}/api/auth/refresh-token`, {
+          credentials: 'include',
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -1311,7 +1319,7 @@ export default {
         if (resData.status !== 'success' || !resData.data) return false;
 
         const dataObj = resData.data || resData;
-        const token = dataObj.accessToken || resData.accessToken;
+        const token = false;
         if (token) this.jwt = token;
 
         const user = dataObj.user || (token ? this.mapUserFromToken(token) : null);
@@ -1345,8 +1353,9 @@ export default {
     async loadConversationsList() {
       try {
         const response = await fetch(`${this.backendUrl}/conversations`, {
+          credentials: 'include',
           headers: {
-            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
+            
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1367,8 +1376,9 @@ export default {
 
       try {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
+          credentials: 'include',
           headers: {
-            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
+            
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1402,9 +1412,10 @@ export default {
       if (!confirm('¿Seguro que deseas eliminar este chat?')) return;
       try {
         const response = await fetch(`${this.backendUrl}/conversations/${conversationId}`, {
+          credentials: 'include',
           method: 'DELETE',
           headers: {
-            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
+            
             'ngrok-skip-browser-warning': 'true'
           }
         });
@@ -1572,10 +1583,11 @@ export default {
 
       try {
         const response = await fetch(`${this.backendUrl}/chat/stream`, {
+          credentials: 'include',
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(this.jwt ? { 'Authorization': `Bearer ${this.jwt}` } : {}),
+            
             'ngrok-skip-browser-warning': 'true'
           },
           body: JSON.stringify({
@@ -1794,6 +1806,7 @@ export default {
         formData.append('audio', blob, 'recording.webm');
 
         const response = await fetch(`${this.backendUrl}/transcribe`, {
+          credentials: 'include',
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.jwt}`,
@@ -1882,12 +1895,14 @@ export default {
         // Parallel requests
         const [logsResponse, statsResponse] = await Promise.all([
           fetch(`${this.backendUrl}/observability/logs?limit=50`, {
+          credentials: 'include',
             headers: {
               'Authorization': `Bearer ${this.jwt}`,
               'ngrok-skip-browser-warning': 'true'
             }
           }),
           fetch(`${this.backendUrl}/observability/stats`, {
+          credentials: 'include',
             headers: {
               'Authorization': `Bearer ${this.jwt}`,
               'ngrok-skip-browser-warning': 'true'
