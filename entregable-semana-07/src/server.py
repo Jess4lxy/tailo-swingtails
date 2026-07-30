@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 
 import ollama
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Cookie, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -280,23 +280,39 @@ class TranscriptionResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Autenticacion (JWT que reenvia la app de SwingTails)
 # ---------------------------------------------------------------------------
-def _bearer_token(authorization: str | None) -> str:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Falta el header Authorization: Bearer <jwt>")
-    token = authorization.split(" ", 1)[1].strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Token vacio")
-    return token
+def _resolve_token(authorization: str | None, cookie_token: str | None = None) -> str:
+    """Obtiene el JWT del header `Authorization: Bearer <jwt>` O, si no viene, de la
+    cookie `accessToken` (HttpOnly).
+
+    Asi el frontend puede autenticarse SIN exponer el token a JavaScript: el
+    navegador manda la cookie automaticamente (fetch con credentials:'include')
+    y el backend la lee del lado servidor. Un XSS NO puede robar el token porque
+    la cookie es HttpOnly y JS nunca la toca. El header tiene prioridad si ambos
+    vienen (util para clientes tipo Postman o el proxy nginx que inyecta el Bearer)."""
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        if token:
+            return token
+    if cookie_token and cookie_token.strip():
+        return cookie_token.strip()
+    raise HTTPException(
+        status_code=401,
+        detail="Falta el token: envia 'Authorization: Bearer <jwt>' o la cookie 'accessToken'.",
+    )
 
 
-def _validate_token(authorization: str | None) -> tuple[api_client.SwingTailsClient, int]:
+def _validate_token(
+    authorization: str | None, cookie_token: str | None = None
+) -> tuple[api_client.SwingTailsClient, int]:
     """Valida el JWT (FIRMA + alg + exp) y devuelve (cliente ligado al token,
     user_id). NO toca el ContextVar: el caller decide cuando/donde activarlo.
+    Acepta el token por header Authorization O por cookie accessToken (ver
+    _resolve_token).
 
     Reporte de seguridad C-01: usa api_client.verify_token, que RECHAZA tokens
     con alg:none / sin firma y (si hay secreto) verifica la firma. Antes solo se
     leia el payload, lo que permitia forjar tokens de cualquier usuario."""
-    token = _bearer_token(authorization)
+    token = _resolve_token(authorization, cookie_token)
     try:
         user_id = api_client.verify_token(token)
     except api_client.InvalidToken as exc:
@@ -316,12 +332,15 @@ def _require_admin(user_id: int) -> None:
         )
 
 
-def _authed_user_id(authorization: str | None) -> tuple[int, object]:
+def _authed_user_id(
+    authorization: str | None, cookie_token: str | None = None
+) -> tuple[int, object]:
     """Valida el JWT y ACTIVA el cliente en el ContextVar del contexto actual.
+    Acepta el token por header O por cookie accessToken.
 
     Usar solo en endpoints sincronos (corren en un unico hilo del threadpool de
     Starlette, asi que el ContextVar set/reset vive y muere en el mismo hilo)."""
-    client, user_id = _validate_token(authorization)
+    client, user_id = _validate_token(authorization, cookie_token)
     ctx_token = api_client.use_request_client(client)
     return user_id, ctx_token
 
@@ -420,8 +439,12 @@ def health() -> dict:
 # /chat  (respuesta completa, sin streaming)
 # ---------------------------------------------------------------------------
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> ChatResponse:
-    user_id, ctx_token = _authed_user_id(authorization)
+def chat(
+    req: ChatRequest,
+    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
+) -> ChatResponse:
+    user_id, ctx_token = _authed_user_id(authorization, access_token)
     try:
         _enforce_rate_limit(user_id, "chat", RATE_LIMIT_CHAT)
         done = None
@@ -459,7 +482,9 @@ def _sse(event: str, data: dict) -> str:
 
 @app.post("/chat/stream")
 async def chat_stream(
-    req: ChatRequest, authorization: str | None = Header(default=None)
+    req: ChatRequest,
+    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
 ) -> StreamingResponse:
     """Respuesta en streaming. Emite eventos SSE:
 
@@ -472,7 +497,7 @@ async def chat_stream(
                            ttft_ms, total_latency_ms, tokens_per_second, compacted}
         event: error   -> {message}
     """
-    client, user_id = _validate_token(authorization)
+    client, user_id = _validate_token(authorization, access_token)
     _enforce_rate_limit(user_id, "chat", RATE_LIMIT_CHAT)
 
     async def event_gen():
@@ -541,9 +566,10 @@ def _whisper():
 async def transcribe(
     audio: UploadFile = File(...),
     authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
 ) -> TranscriptionResponse:
     """Transcribe un audio (multipart 'audio') a texto con Whisper local."""
-    _client, _uid = _validate_token(authorization)  # mismas credenciales que el chat
+    _client, _uid = _validate_token(authorization, access_token)  # mismas credenciales que el chat
     _enforce_rate_limit(_uid, "transcribe", RATE_LIMIT_TRANSCRIBE)
     data = await audio.read()
     if not data:
@@ -601,8 +627,11 @@ async def transcribe(
 # Conversaciones (heredado de semana 04, sin cambios funcionales)
 # ---------------------------------------------------------------------------
 @app.get("/conversations", response_model=list[ConversationSummary])
-def list_conversations(authorization: str | None = Header(default=None)) -> list[ConversationSummary]:
-    user_id, ctx_token = _authed_user_id(authorization)
+def list_conversations(
+    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
+) -> list[ConversationSummary]:
+    user_id, ctx_token = _authed_user_id(authorization, access_token)
     try:
         return [
             ConversationSummary(
@@ -618,8 +647,12 @@ def list_conversations(authorization: str | None = Header(default=None)) -> list
 
 
 @app.get("/conversations/{conversation_id}")
-def get_conversation(conversation_id: str, authorization: str | None = Header(default=None)) -> dict:
-    user_id, ctx_token = _authed_user_id(authorization)
+def get_conversation(
+    conversation_id: str,
+    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
+) -> dict:
+    user_id, ctx_token = _authed_user_id(authorization, access_token)
     try:
         if not sessions.conversation_exists(conversation_id, user_id):
             raise HTTPException(status_code=404, detail="Conversacion no encontrada")
@@ -635,8 +668,12 @@ def get_conversation(conversation_id: str, authorization: str | None = Header(de
 
 
 @app.delete("/conversations/{conversation_id}")
-def delete_conversation(conversation_id: str, authorization: str | None = Header(default=None)) -> dict:
-    user_id, ctx_token = _authed_user_id(authorization)
+def delete_conversation(
+    conversation_id: str,
+    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
+) -> dict:
+    user_id, ctx_token = _authed_user_id(authorization, access_token)
     try:
         if not sessions.conversation_exists(conversation_id, user_id):
             raise HTTPException(status_code=404, detail="Conversacion no encontrada")
@@ -674,12 +711,13 @@ def observability_logs(
     session_id: str | None = None,
     limit: int = 50,
     authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
 ) -> list[dict]:
     """Devuelve los registros de auditoria, mas reciente primero.
 
     - `?session_id=<conversation_id>` filtra por una conversacion.
     - `?limit=<n>` acota la cantidad (1..500). Requiere JWT valido de ADMIN."""
-    _client, uid = _validate_token(authorization)
+    _client, uid = _validate_token(authorization, access_token)
     _require_admin(uid)
     limit = max(1, min(int(limit), 500))
     rows = observability.recent_logs(limit=limit, session_id=session_id)
@@ -687,10 +725,13 @@ def observability_logs(
 
 
 @app.get("/observability/stats")
-def observability_stats(authorization: str | None = Header(default=None)) -> dict:
+def observability_stats(
+    authorization: str | None = Header(default=None),
+    access_token: str | None = Cookie(default=None, alias="accessToken"),
+) -> dict:
     """Agregados para el informe: total, % bloqueados, TTFT/latencia/tps medios.
     Solo administradores (reporte C-03)."""
-    _client, uid = _validate_token(authorization)
+    _client, uid = _validate_token(authorization, access_token)
     _require_admin(uid)
     s = observability.stats()
     total = s.get("total") or 0
