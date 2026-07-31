@@ -4,12 +4,6 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐾</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Content Security Policy (reporte de seguridad B-02): bloquea la ejecucion
-         de scripts inyectados (defensa contra XSS). El build solo usa un script
-         externo propio, tipografias de Google y se conecta por https a las APIs.
-         El origen del backend (%VITE_BACKEND_URL%) lo inyecta Vite en el build
-         desde la MISMA env var que usa la app: NO se hardcodea la URL del tunel. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; style-src 'self' https://fonts.googleapis.com https://www.google.com/recaptcha/; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://swingtails-api-yz02.onrender.com %VITE_BACKEND_URL% https://www.google.com/recaptcha/; frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <meta name="referrer" content="no-referrer" />
     <meta name="description" content="SwingTails AI - Chatbot y asistente inteligente local para el cuidado y consulta de mascotas, agendado de citas y reseñas clínicas." />
     <title>SwingTails AI - Asistente Inteligente Local</title>
