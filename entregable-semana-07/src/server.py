@@ -40,19 +40,21 @@ from pathlib import Path
 import ollama
 from fastapi import Cookie, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 import api_client
 import geo
 import observability
 import sessions
+import tools
 from agents.orchestrator import Orchestrator
 from config import (
     ADMIN_USER_IDS,
     CORS_ORIGINS,
     ENABLE_DOCS,
     EXPOSE_DEBUG_FIELDS,
+    GATEWAY_KEY,
     LLM_MODEL,
     OLLAMA_HOST,
     OLLAMA_TIMEOUT,
@@ -99,6 +101,18 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 @app.middleware("http")
 async def _security_headers(request, call_next):
+    # (A-03) Compuerta de gateway: si TAILO_GATEWAY_KEY esta configurada, el agente
+    # solo atiende peticiones con el header 'X-Tailo-Gateway-Key' correcto (lo pone
+    # el proxy legitimo del lado servidor). El acceso DIRECTO al tunel se rechaza.
+    # /health (uptime) y el preflight OPTIONS quedan exentos.
+    if GATEWAY_KEY and request.method != "OPTIONS" and request.url.path != "/health":
+        if request.headers.get("X-Tailo-Gateway-Key", "") != GATEWAY_KEY:
+            blocked = JSONResponse(
+                status_code=403,
+                content={"detail": "Acceso no autorizado a la pasarela del agente."},
+            )
+            blocked.headers["Server"] = "SwingTails"
+            return blocked
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -346,6 +360,41 @@ def _authed_user_id(
 
 
 # ---------------------------------------------------------------------------
+# Saneamiento de la respuesta hacia el cliente (reporte A-02/A-03)
+# ---------------------------------------------------------------------------
+# La auditoria extrajo TODAS las funciones internas del agente y las APIs a las
+# que apuntan leyendo el campo `tools_executed` (nombre real de la funcion +
+# parametros) de las respuestas. Mapeamos cada tool a una etiqueta GENERICA y
+# quitamos los parametros: la UI sigue mostrando una traza, pero sin revelar la
+# implementacion interna ni los endpoints. La traza COMPLETA se conserva en la
+# bitacora de observabilidad (server-side), no en la respuesta al cliente.
+_TOOL_LABELS = {
+    "list_my_pets": "consulta de mascotas",
+    "register_pet": "registro de mascota",
+    "delete_pet": "gestion de mascota",
+    "list_clinics": "consulta de clinicas",
+    "find_nearest_clinics": "clinicas cercanas",
+    "consultar_citas": "consulta de citas",
+    "cancel_appointment": "gestion de cita",
+    "gestionar_cita": "gestion de cita",
+    "crear_cita": "gestion de cita",
+}
+
+
+def _tool_label(name: str) -> str:
+    return _TOOL_LABELS.get(name or "", "accion del asistente")
+
+
+def _sanitize_tools_executed(tools) -> list[dict]:
+    """Oculta nombres internos de funciones y sus parametros; deja etiqueta + estado."""
+    out = []
+    for t in tools or []:
+        if isinstance(t, dict):
+            out.append({"name": _tool_label(t.get("name", "")), "status": t.get("status", "")})
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Pipeline del turno: orquestador multi-agente + persistencia + observabilidad
 # ---------------------------------------------------------------------------
 def _run_turn_pipeline(req: "ChatRequest", user_id: int):
@@ -370,6 +419,11 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
     if req.lat is not None and req.lon is not None:
         loc_token = geo.use_request_location({"lat": req.lat, "lon": req.lon})
 
+    # (A-02) El mensaje del usuario se expone a las tools (ContextVar por-hilo)
+    # para que la compuerta de confirmacion de operaciones destructivas pueda
+    # detectar un "si, confirmo" / "no" explicito.
+    msg_token = tools.set_current_message(req.message)
+
     try:
         # --- C. Prompting: historial persistido (resumen + turnos recientes) -
         # El orquestador lo pasa TAL CUAL al especialista (contexto entre agentes).
@@ -381,10 +435,20 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
             if ev.get("type") == "done":
                 done_ev = ev
                 break
+            # (A-03) En el streaming, los eventos intermedios tambien filtraban el
+            # nombre real de la tool y la ruta interna. Salvo en debug, saneamos el
+            # evento 'tool' (etiqueta generica) y omitimos el detalle de 'route'.
+            if not EXPOSE_DEBUG_FIELDS:
+                etype = ev.get("type")
+                if etype == "tool" and "name" in ev:
+                    ev = {**ev, "name": _tool_label(ev.get("name", ""))}
+                elif etype == "route":
+                    ev = {"type": "route", "method": ev.get("method", "")}
             yield ev
     finally:
         if loc_token is not None:
             geo.reset_request_location(loc_token)
+        tools.reset_current_message(msg_token)
 
     if done_ev is None:  # defensivo: no deberia pasar
         done_ev = {"type": "done", "reply": "", "route": None, "blocked": False,
@@ -419,11 +483,18 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
     )
 
     done_ev.update(conversation_id=conv_id or "", user_id=user_id, turns=turns, compacted=compacted)
-    # (Reporte V2 H-03) No filtrar los fragmentos RAG crudos al cliente salvo en
-    # modo debug. El campo `sources` (solo nombres de documento) SI se conserva
-    # para poder citar la fuente en la UI.
+    # (Reporte A-02/A-03 + V2 H-03) Salvo en modo debug, NO exponemos al cliente:
+    #   - context: fragmentos RAG crudos.
+    #   - sources: nombres de los documentos internos de la base de conocimiento.
+    #   - route:  ruta interna del orquestador (rag/transactional/smalltalk).
+    #   - tools_executed: se SANEA (etiqueta generica, sin nombre de funcion ni
+    #     parametros) para no revelar las funciones/APIs internas del agente.
+    # La traza completa queda en la observabilidad server-side (arriba), no aqui.
     if not EXPOSE_DEBUG_FIELDS:
         done_ev["context"] = []
+        done_ev["sources"] = []
+        done_ev["route"] = None
+        done_ev["tools_executed"] = _sanitize_tools_executed(done_ev.get("tools_executed"))
     yield done_ev
 
 
@@ -432,7 +503,11 @@ def _run_turn_pipeline(req: "ChatRequest", user_id: int):
 # ---------------------------------------------------------------------------
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "model": LLM_MODEL, "arquitectura": "multi-agente (semana 07)"}
+    # (A-03) No revelar el modelo ni la arquitectura interna en un endpoint publico.
+    # El detalle solo se expone en modo debug (para diagnostico local).
+    if EXPOSE_DEBUG_FIELDS:
+        return {"status": "ok", "model": LLM_MODEL, "arquitectura": "multi-agente (semana 07)"}
+    return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------

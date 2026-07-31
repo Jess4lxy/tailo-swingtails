@@ -175,6 +175,13 @@ def actualizar_estado_cita(folio: str, nuevo_estado: str) -> dict:
         return {"preguntar_al_usuario":
                 f"'{nuevo_estado}' no es un estado valido. Usa uno de: "
                 f"{', '.join(stress_db.ESTADOS)}."}
+    # (A-02) Cancelar una cita es DESTRUCTIVO -> compuerta de confirmacion de 2
+    # pasos (misma que delete_pet/cancel_appointment). Confirmar/completar no.
+    if estado.lower().startswith("cancel"):
+        from tools import _confirm_destructive
+        gate = _confirm_destructive("cancel_cita", folio, f"CANCELAR la cita {folio}")
+        if gate is not None:
+            return gate
     with stress_db.connect() as conn:
         cur = conn.execute(
             "UPDATE citas SET status = ? WHERE folio = ? AND user_id = ?",
