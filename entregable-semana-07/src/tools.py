@@ -22,7 +22,9 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import time
 import unicodedata
+from contextvars import ContextVar
 from typing import Any, Callable
 
 from api_client import get_client
@@ -46,6 +48,72 @@ _NO_SESSION_ERROR = {
 # tenga que recordarlos. Se limpia al completar el registro o al cambiar de
 # mascota. Es estado de proceso, por-usuario; suficiente para el caso de uso.
 _pending_pet: dict[int, dict] = {}
+
+
+# ===========================================================================
+# Confirmacion de operaciones DESTRUCTIVAS (reporte A-02)
+# ===========================================================================
+# La auditoria logro que el agente ejecutara borrados/cancelaciones con solo
+# ingenieria social sobre el LLM. Aqui ponemos una compuerta DETERMINISTA de dos
+# pasos (no depende de que el modelo "se porte bien"): la 1a invocacion NUNCA
+# ejecuta, solo pide confirmacion; la 2a solo ejecuta si el usuario confirmo de
+# forma EXPLICITA en su mensaje. Sin confirmacion clara, no se toca la BD.
+_current_message: ContextVar[str] = ContextVar("_current_message", default="")
+_pending_destructive: dict[int, dict] = {}
+_CONFIRM_TTL = 300  # seg de validez de una confirmacion pendiente
+_AFFIRM = re.compile(
+    r"\b(si|s[ií]|claro|confirmo|confirmar|confirma|adelante|dale|hazlo|h[aá]galo|"
+    r"procede|proceder|acepto|correcto|de acuerdo|ok|okay|b[oó]rralo|elim[ií]nalo)\b"
+)
+_NEGATE = re.compile(r"\b(no|mejor no|ya no|olv[ií]dalo|det[eé]nte|espera|abortar|aborta|nunca)\b")
+
+
+def set_current_message(msg: str):
+    """El servidor fija aqui el mensaje del usuario del turno actual (ContextVar
+    por-hilo) para que la compuerta de confirmacion pueda leerlo."""
+    return _current_message.set(msg or "")
+
+
+def reset_current_message(token) -> None:
+    try:
+        _current_message.reset(token)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _confirm_destructive(action: str, target_id, descripcion: str) -> dict | None:
+    """Compuerta de 2 pasos. Devuelve un dict (pedir confirmacion / cancelado /
+    sin sesion) si NO se debe ejecutar todavia; devuelve None SOLO cuando el
+    usuario ya confirmo explicitamente (el caller procede a ejecutar)."""
+    uid = _current_user_id()
+    if uid is None:
+        return _NO_SESSION_ERROR
+    msg = (_current_message.get() or "").strip().lower()
+    now = time.time()
+    pend = _pending_destructive.get(uid)
+    vigente = (
+        pend
+        and pend.get("action") == action
+        and str(pend.get("target")) == str(target_id)
+        and now - pend["ts"] < _CONFIRM_TTL
+    )
+    if vigente:
+        if _AFFIRM.search(msg):
+            _pending_destructive.pop(uid, None)
+            return None  # confirmado -> ejecutar
+        if _NEGATE.search(msg):
+            _pending_destructive.pop(uid, None)
+            return {"cancelado": True, "mensaje": f"Entendido, cancelo la operacion. NO se {descripcion}."}
+        # respuesta ambigua: seguimos esperando un si/no explicito
+    # 1er intento (o ambiguo/expirado): registrar pendiente y PEDIR confirmacion
+    _pending_destructive[uid] = {"action": action, "target": str(target_id), "ts": now}
+    return {
+        "requiere_confirmacion": True,
+        "mensaje": (
+            f"Estas a punto de {descripcion}. Esta accion es IRREVERSIBLE. "
+            "Para continuar responde exactamente 'si, confirmo'; para abortar responde 'no'."
+        ),
+    }
 
 
 def _match_by_name(items: Any, name: str, key: str = "name") -> dict | None:
@@ -449,6 +517,9 @@ def delete_pet(pet_id: int) -> dict:
     confirmar con el usuario antes de invocarla y asegurarse de que el id
     corresponde a la mascota correcta (usa list_my_pets si hay duda).
     """
+    gate = _confirm_destructive("delete_pet", int(pet_id), f"ELIMINAR la mascota con id {int(pet_id)}")
+    if gate is not None:
+        return gate  # requiere confirmacion / cancelado / sin sesion -> NO se ejecuta
     return get_client().delete(f"/api/pets/{int(pet_id)}")
 
 
@@ -665,6 +736,9 @@ def cancel_appointment(appointment_id: int) -> dict:
     Llama a DELETE /api/appointments/{id}. Operacion destructiva: confirma
     con el usuario antes de invocarla.
     """
+    gate = _confirm_destructive("cancel_appointment", int(appointment_id), f"CANCELAR la cita con id {int(appointment_id)}")
+    if gate is not None:
+        return gate  # requiere confirmacion / cancelado / sin sesion -> NO se ejecuta
     return get_client().delete(f"/api/appointments/{int(appointment_id)}")
 
 

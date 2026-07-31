@@ -220,6 +220,14 @@ RATE_JITTER_FRACTION = float(os.getenv("TAILO_RATE_JITTER_FRACTION", "0.34"))  #
 # exponen los campos de depuracion (context crudo). Pon "1" solo para demos/debug.
 EXPOSE_DEBUG_FIELDS = os.getenv("TAILO_EXPOSE_DEBUG_FIELDS", "0") in {"1", "true", "True"}
 
+# (Reporte A-03) Restriccion del tunel: el agente esta expuesto por ngrok y es
+# alcanzable directamente. Si se define TAILO_GATEWAY_KEY, el agente SOLO atiende
+# peticiones que traigan el header 'X-Tailo-Gateway-Key' con este valor exacto,
+# que debe inyectar el proxy legitimo DEL LADO SERVIDOR (p.ej. el gateway Node en
+# /api/ai). Asi el acceso directo al tunel (sin pasar por el proxy) se rechaza con
+# 403, sin tener que tocar la config de ngrok. Vacio = sin restriccion.
+GATEWAY_KEY = os.getenv("TAILO_GATEWAY_KEY", "").strip()
+
 # ---------------------------------------------------------------------------
 # Frontend estatico servido por el MISMO backend (opcional)
 # ---------------------------------------------------------------------------
